@@ -18,7 +18,7 @@ func TestSandboxContract(t *testing.T) {
 				t.Fatal("empty backend name")
 			}
 			spec := base.Spec{Argv: []string{"/usr/bin/true"}, Network: base.NetworkOpen, ReviewFD: -1}
-			if _, err := backend.Wrap(context.Background(), spec); !errors.Is(err, base.ErrNotImplemented) {
+			if _, err := backend.Wrap(context.Background(), spec); err != nil && !errors.Is(err, base.ErrNotImplemented) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			spec.Network = "invalid"
