@@ -53,16 +53,19 @@ They do not construct Bubblewrap flags, SBPL, nftables syntax, or service-manage
 arguments. Those details belong to adapters implementing `platform/base`.
 
 `runner.OSRunner` uses `exec.CommandContext` directly. It never invokes a shell
-and never inherits the parent environment implicitly. Vendor installers may be
-shell programs, but will be executed as explicit external processes under the
-AI account in Phase 2.
+and never inherits the parent environment implicitly. Output capture is bounded,
+and cancellation kills the subprocess group with a bounded wait. Vendor
+installers may be shell programs, but will be executed as explicit external
+processes under the AI account in Phase 2.
 
 ## Planning and failure
 
 A plan is an ordered list of named actions. Execution applies each action and
 then verifies all applied actions. An apply or verification error triggers
-rollback in reverse order, including the action whose apply failed. Dry-run
-only materializes names and never invokes apply, rollback, or verification.
+rollback in reverse order, including the action whose apply failed. Rollback
+uses a fresh two-minute context derived with `context.WithoutCancel`, so caller
+cancellation does not abort cleanup. Dry-run only materializes names and never
+invokes apply, rollback, or verification.
 
 The current plans describe the Phase 2 lifecycle but intentionally have no
 system-mutating implementation. This makes the CLI end-to-end behavior testable
@@ -76,13 +79,17 @@ are:
 - Linux: `/var/lib/ai-sandbox/state.json`
 - macOS: `/Library/Application Support/ai-sandbox/state.json`
 
-Writes use a temporary file in the destination directory, `fsync`, and atomic
-rename. Existing symlinks and non-regular destinations are rejected. Backup and
-restore APIs are available for transactional implementation in Phase 2.
+Writes use a temporary file in the destination directory, file and directory
+`fsync`, and atomic rename. Existing symlinks and non-regular destinations are
+rejected. The parent must be a real, non-world-writable directory owned by root
+or the current user. Backup and restore APIs are available for Phase 2.
 
-Update and uninstall load the saved state. Uninstall planning uses its runtime,
-firewall, service, ACL, and alias records rather than current command flags.
-Secrets have no representation in the state schema.
+Update and uninstall load the saved state. An explicit `--state` takes priority;
+otherwise `--config` supplies its `state_path`. Uninstall planning uses the
+saved runtime, firewall, service, ACL, and alias records rather than current
+configuration values. State validation checks backend/platform compatibility,
+resource paths, runtime CLIs, services, and backups. Secrets have no
+representation in the state schema.
 
 ## Launcher dispatch
 

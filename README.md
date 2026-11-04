@@ -5,9 +5,10 @@ Pi, and OpenCode on Linux and macOS. It is the successor to the Bash reference
 installer in this repository; the Go binary has no Bash or Python runtime.
 
 > **Phase 1 status:** configuration, state, dry-run planning, doctor, backend
-> contracts, tests, and CI are implemented. No system-mutating backend is active
-> yet. `install`, `update`, and `uninstall` require `--dry-run`; `enter` and
-> `review` intentionally return an unavailable status.
+> contracts, tests, and CI are implemented. No system-mutating backend is active.
+> For `install`, `update`, and `uninstall`, only dry-run planning succeeds;
+> without `--dry-run` they return exit code 3 before changing the system.
+> `enter` and `review` intentionally return the same unavailable status.
 
 ## Target model
 
@@ -50,18 +51,24 @@ sandboxctl install --cli claude,opencode --backend auto --dry-run
 sandboxctl update --dry-run
 sandboxctl uninstall --dry-run
 sandboxctl status [--json]
-sandboxctl review FILE
-sandboxctl enter --tool claude --start-dir DIR
+sandboxctl review /absolute/path/to/FILE
+sandboxctl enter --tool claude --start-dir /absolute/path/to/DIR
 ```
 
 Common flags are `--dry-run`, `--yes`, `--json`, `--verbose`, `--backend`,
 `--config`, and `--state`. Place them after the command. `--config` loads strict
 JSON; without it, defaults are derived from the owner account and platform.
+For `status`, `update`, and `uninstall`, an explicit `--state` wins; otherwise
+the state path comes from `--config`, then from the platform default.
+
+`--json` also makes errors structured on stderr. In Phase 1, `--yes` and
+`--verbose` are accepted for interface compatibility but do not alter behavior;
+confirmation and verbose execution will be wired to real actions in Phase 2.
 
 Doctor reports OS/architecture, privileges, init system, Bubblewrap and user
-namespaces, nftables, ACL tooling, Seatbelt's deprecated status, and Lima/UTM.
-It exits 0 when required capabilities are present, 1 when diagnostics fail, 2
-for invalid usage, and 3 for functionality not implemented in the current phase.
+namespaces, nftables, ACL tooling, Seatbelt's deprecated status, and Lima/UTM on
+macOS. It exits 0 when required capabilities are present, 1 when diagnostics
+fail, 2 for invalid usage, and 3 for functionality not implemented.
 
 Example Linux dry-run:
 
@@ -80,7 +87,7 @@ the first action in Phase 1.
 ```bash
 gofmt -w cmd internal tests
 go vet ./...
-go test ./...
+go test -race ./...
 go run honnef.co/go/tools/cmd/staticcheck@2024.1.1 ./...
 ```
 

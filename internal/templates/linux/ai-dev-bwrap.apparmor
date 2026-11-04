@@ -1,0 +1,8 @@
+# Managed by sandboxctl. Remove during state-driven uninstall.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile ai-dev-bwrap /usr/bin/bwrap flags=(default_allow) {
+  userns,
+  include if exists <local/ai-dev-bwrap>
+}
