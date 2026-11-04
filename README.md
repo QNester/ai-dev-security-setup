@@ -49,25 +49,29 @@ The project currently uses only the Go standard library. The permitted future
 ## Commands
 
 ```text
-sandboxctl doctor [--json] [--backend native|vm|auto]
+sandboxctl doctor [--backend native|vm|auto]
 sandboxctl install --cli claude,opencode --backend auto --dry-run
 sandboxctl update --dry-run
 sandboxctl uninstall --dry-run
-sandboxctl status [--json]
+sandboxctl status
 sandboxctl review /absolute/path/to/FILE
 sandboxctl enter --tool claude --start-dir /absolute/path/to/DIR
 ```
 
-Common flags are `--dry-run`, `--yes`, `--json`, `--verbose`, `--backend`,
-`--config`, and `--state`. Place them after the command. `--config` loads strict
-JSON; without it, defaults are derived from the owner account and platform.
-For `status`, `update`, and `uninstall`, an explicit `--state` wins; otherwise
-the state path comes from `--config`, then from the platform default.
+Human output is formatted text with green success and red error lines. Colors are
+enabled only on a terminal and are disabled by `NO_COLOR` or `--no-color`.
+`--json` remains an explicit opt-in for automation and turns errors into JSON on
+stderr.
 
-`--json` also makes errors structured on stderr. Mutating `install`, `update`,
-and `uninstall` require root and `--yes`; without `--yes` the command exits with
-a usage error. `--verbose` is accepted but does not yet add progress detail.
-`--dry-run` never invokes backend code.
+Common flags are `--dry-run`, `--yes`, `--json`, `--no-color`, `--verbose`,
+`--backend`, `--config`, and `--state`. Place them after the command. `--config`
+loads strict JSON; without it, defaults are derived from the owner account and
+platform. For `status`, `update`, and `uninstall`, an explicit `--state` wins;
+otherwise the state path comes from `--config`, then from the platform default.
+
+Mutating `install`, `update`, and `uninstall` require root and `--yes`; without
+`--yes` the command exits with a usage error. `--verbose` is accepted but does
+not yet add progress detail. `--dry-run` never invokes backend code.
 
 Doctor reports OS/architecture, privileges, init system, Bubblewrap and user
 namespaces, nftables, ACL tooling, Seatbelt's deprecated status, and Lima/UTM on

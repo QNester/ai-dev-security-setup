@@ -20,6 +20,7 @@ func testApp() (*App, *bytes.Buffer, *bytes.Buffer) {
 	app := New(stdout, stderr)
 	app.Platform = "linux"
 	app.Arch = "amd64"
+	app.EUID = 1000
 	return app, stdout, stderr
 }
 
@@ -126,6 +127,50 @@ func TestLauncherDispatch(t *testing.T) {
 	want = []string{"review", "/tmp/input"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got=%v want=%v", got, want)
+	}
+}
+
+func TestColorizedStatusAndErrors(t *testing.T) {
+	app, stdout, _ := testApp()
+	app.forceColor = true
+	if code := app.Run(context.Background(), "sandboxctl", []string{"status", "--state", filepath.Join(t.TempDir(), "missing.json")}); code != ExitOK {
+		t.Fatalf("code=%d", code)
+	}
+	if !strings.Contains(stdout.String(), ansiYellow) || !strings.Contains(stdout.String(), "not installed") {
+		t.Fatalf("unexpected colored status: %q", stdout.String())
+	}
+
+	configPath := writeSystemConfig(t)
+	app, _, stderr := testApp()
+	app.forceColor = true
+	if code := app.Run(context.Background(), "sandboxctl", []string{"install", "--config", configPath, "--yes"}); code != ExitFailure {
+		t.Fatalf("code=%d", code)
+	}
+	if !strings.Contains(stderr.String(), ansiRed) || !strings.Contains(stderr.String(), "requires root") {
+		t.Fatalf("unexpected colored error: %q", stderr.String())
+	}
+}
+
+func TestColorizedPlanIsGreen(t *testing.T) {
+	app, stdout, _ := testApp()
+	app.forceColor = true
+	configPath, _ := writeTestConfig(t)
+	if code := app.Run(context.Background(), "sandboxctl", []string{"install", "--config", configPath, "--dry-run"}); code != ExitOK {
+		t.Fatalf("code=%d", code)
+	}
+	if !strings.Contains(stdout.String(), ansiGreen) || !strings.Contains(stdout.String(), "dry-run") {
+		t.Fatalf("unexpected colored plan: %q", stdout.String())
+	}
+}
+
+func TestNoColorDisablesANSI(t *testing.T) {
+	app, stdout, _ := testApp()
+	app.forceColor = true
+	if code := app.Run(context.Background(), "sandboxctl", []string{"status", "--no-color", "--state", filepath.Join(t.TempDir(), "missing.json")}); code != ExitOK {
+		t.Fatalf("code=%d", code)
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Fatalf("ANSI escape leaked with --no-color: %q", stdout.String())
 	}
 }
 

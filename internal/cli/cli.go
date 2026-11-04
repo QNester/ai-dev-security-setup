@@ -45,12 +45,15 @@ type App struct {
 	EUID       int
 	Detector   *detect.Detector
 	jsonErrors bool
+	noColor    bool
+	forceColor bool
 }
 
 type commonFlags struct {
 	dryRun     bool
 	yes        bool
 	json       bool
+	noColor    bool
 	verbose    bool
 	backend    string
 	backendSet bool
@@ -67,12 +70,18 @@ func New(stdout, stderr io.Writer) *App {
 
 func (a *App) Run(ctx context.Context, argv0 string, args []string) int {
 	a.jsonErrors = false
+	a.noColor = false
 	for _, arg := range args {
 		if arg == "--json" {
 			a.jsonErrors = true
 		} else if value, ok := strings.CutPrefix(arg, "--json="); ok {
 			enabled, err := strconv.ParseBool(value)
 			a.jsonErrors = err == nil && enabled
+		} else if arg == "--no-color" {
+			a.noColor = true
+		} else if value, ok := strings.CutPrefix(arg, "--no-color="); ok {
+			enabled, err := strconv.ParseBool(value)
+			a.noColor = err == nil && enabled
 		}
 	}
 	args = dispatchSymlink(filepath.Base(argv0), args)
@@ -158,12 +167,29 @@ func (a *App) runDoctor(args []string) error {
 			return err
 		}
 	} else {
+		color := a.colored(a.Stdout)
 		fmt.Fprintf(a.Stdout, "OS: %s/%s\nBackend: %s\n", report.OS, report.Arch, report.Backend)
 		for _, check := range report.Checks {
-			fmt.Fprintf(a.Stdout, "%-7s %s: %s\n", strings.ToUpper(check.Status), check.Name, check.Detail)
+			label := strings.ToUpper(check.Status)
+			if color {
+				fmt.Fprintf(a.Stdout, "%s%-7s%s %s: %s\n", doctorColor(check.Status), label, ansiReset, check.Name, check.Detail)
+			} else {
+				fmt.Fprintf(a.Stdout, "%-7s %s: %s\n", label, check.Name, check.Detail)
+			}
 		}
 		for _, warning := range report.Warnings {
-			fmt.Fprintf(a.Stdout, "WARNING %s\n", warning)
+			if color {
+				fmt.Fprintf(a.Stdout, "%s! %s%s\n", ansiYellow, warning, ansiReset)
+			} else {
+				fmt.Fprintf(a.Stdout, "WARNING %s\n", warning)
+			}
+		}
+		if report.Healthy() {
+			if color {
+				fmt.Fprintf(a.Stdout, "%s✔ host is ready%s\n", ansiGreen, ansiReset)
+			} else {
+				fmt.Fprintln(a.Stdout, "host is ready")
+			}
 		}
 	}
 	if !report.Healthy() {
@@ -312,7 +338,11 @@ func (a *App) runStatus(args []string) error {
 		if common.json {
 			return writeJSON(a.Stdout, map[string]bool{"installed": false})
 		}
-		fmt.Fprintln(a.Stdout, "not installed")
+		if a.colored(a.Stdout) {
+			fmt.Fprintf(a.Stdout, "%s● not installed%s\n", ansiYellow, ansiReset)
+		} else {
+			fmt.Fprintln(a.Stdout, "not installed")
+		}
 		return nil
 	}
 	if err != nil {
@@ -324,8 +354,13 @@ func (a *App) runStatus(args []string) error {
 	if common.json {
 		return writeJSON(a.Stdout, map[string]any{"installed": true, "state": st})
 	}
-	fmt.Fprintf(a.Stdout, "installed: platform=%s backend=%s clis=%s\n",
-		st.Platform, st.Backend, strings.Join(st.Runtime.CLIs, ","))
+	if a.colored(a.Stdout) {
+		fmt.Fprintf(a.Stdout, "%s✔ installed%s: platform=%s backend=%s clis=%s\n",
+			ansiGreen, ansiReset, st.Platform, st.Backend, strings.Join(st.Runtime.CLIs, ","))
+	} else {
+		fmt.Fprintf(a.Stdout, "installed: platform=%s backend=%s clis=%s\n",
+			st.Platform, st.Backend, strings.Join(st.Runtime.CLIs, ","))
+	}
 	return nil
 }
 
@@ -628,7 +663,18 @@ func (a *App) printPlan(value plan.Plan, common commonFlags) error {
 	if common.json {
 		return writeJSON(a.Stdout, result)
 	}
-	fmt.Fprintf(a.Stdout, "%s (%s)\n", value.Operation, map[bool]string{true: "dry-run", false: "applied"}[common.dryRun])
+	status := "applied"
+	if common.dryRun {
+		status = "dry-run"
+	}
+	if a.colored(a.Stdout) {
+		fmt.Fprintf(a.Stdout, "%s✔ %s %s%s\n", ansiGreen, value.Operation, status, ansiReset)
+		for _, action := range value.Actions {
+			fmt.Fprintf(a.Stdout, "  %s•%s %s\n", ansiDim, ansiReset, action.Name())
+		}
+		return nil
+	}
+	fmt.Fprintf(a.Stdout, "%s (%s)\n", value.Operation, status)
 	for _, action := range value.Actions {
 		fmt.Fprintf(a.Stdout, "  - %s\n", action.Name())
 	}
@@ -648,7 +694,8 @@ func addCommonFlags(fs *flag.FlagSet, common *commonFlags) {
 	fs.BoolVar(&common.dryRun, "dry-run", common.dryRun, "show planned actions without changing the system")
 	fs.BoolVar(&common.yes, "yes", common.yes, "apply without confirmation")
 	fs.BoolVar(&common.yes, "y", common.yes, "alias for --yes")
-	fs.BoolVar(&common.json, "json", common.json, "emit JSON")
+	fs.BoolVar(&common.json, "json", common.json, "machine-readable JSON output")
+	fs.BoolVar(&common.noColor, "no-color", common.noColor, "disable ANSI colors")
 	fs.BoolVar(&common.verbose, "verbose", common.verbose, "enable verbose diagnostics")
 	fs.Func("backend", "native, vm, or auto", func(value string) error {
 		common.backend = value
@@ -657,6 +704,43 @@ func addCommonFlags(fs *flag.FlagSet, common *commonFlags) {
 	})
 	fs.StringVar(&common.configPath, "config", common.configPath, "load a JSON configuration")
 	fs.StringVar(&common.statePath, "state", common.statePath, "override the state file path")
+}
+
+const (
+	ansiReset  = "\x1b[0m"
+	ansiRed    = "\x1b[31m"
+	ansiGreen  = "\x1b[32m"
+	ansiYellow = "\x1b[33m"
+	ansiDim    = "\x1b[2m"
+)
+
+func (a *App) colored(writer io.Writer) bool {
+	if a.noColor {
+		return false
+	}
+	if a.forceColor {
+		return true
+	}
+	if a.Getenv != nil && a.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	file, ok := writer.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func doctorColor(status string) string {
+	switch status {
+	case detect.Pass:
+		return ansiGreen
+	case detect.Warn:
+		return ansiYellow
+	default:
+		return ansiRed
+	}
 }
 
 func writeJSON(writer io.Writer, value any) error {
@@ -685,6 +769,16 @@ func (a *App) fail(code int, err error) int {
 			return code
 		}
 	}
+	if a.colored(a.Stderr) {
+		color := ansiRed
+		symbol := "✖"
+		if code == ExitUnavailable {
+			color = ansiYellow
+			symbol = "●"
+		}
+		fmt.Fprintf(a.Stderr, "%s%s sandboxctl: %v%s\n", color, symbol, err, ansiReset)
+		return code
+	}
 	fmt.Fprintf(a.Stderr, "sandboxctl: %v\n", err)
 	return code
 }
@@ -702,6 +796,6 @@ Commands:
   enter --tool NAME      internal Linux sandbox entry
 
 Mutating commands require root and --yes.
-Common options: --dry-run, --yes, --json, --verbose,
+Common options: --dry-run, --yes, --json, --no-color, --verbose,
                 --backend native|vm|auto, --config FILE, --state FILE`)
 }
