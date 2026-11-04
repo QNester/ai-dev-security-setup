@@ -47,6 +47,9 @@ func (s Spec) Validate() error {
 	if len(s.Argv) == 0 || s.Argv[0] == "" {
 		return errors.New("sandbox argv is required")
 	}
+	if err := config.ValidatePath(s.Argv[0]); err != nil {
+		return fmt.Errorf("sandbox executable must be a clean absolute path: %w", err)
+	}
 	switch s.Network {
 	case NetworkOpen, NetworkProxy, NetworkDeny:
 	default:

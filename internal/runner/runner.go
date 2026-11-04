@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -39,8 +40,8 @@ type Runner interface {
 type OSRunner struct{}
 
 func (OSRunner) Run(ctx context.Context, command Command) (Result, error) {
-	if command.Path == "" {
-		return Result{}, errors.New("command path is required")
+	if command.Path == "" || !filepath.IsAbs(command.Path) || filepath.Clean(command.Path) != command.Path {
+		return Result{}, errors.New("command path must be clean and absolute")
 	}
 	if command.MaxOutputBytes < 0 {
 		return Result{}, errors.New("max output bytes cannot be negative")

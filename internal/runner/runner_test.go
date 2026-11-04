@@ -70,3 +70,10 @@ func TestRunnerBoundsCapturedOutput(t *testing.T) {
 		t.Fatalf("output length=%d truncated=%v", len(result.Stdout), result.StdoutTruncated)
 	}
 }
+
+func TestRunnerRejectsRelativeExecutable(t *testing.T) {
+	_, err := (OSRunner{}).Run(context.Background(), Command{Path: "true"})
+	if err == nil {
+		t.Fatal("relative executable was accepted")
+	}
+}

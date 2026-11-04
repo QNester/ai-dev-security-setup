@@ -35,3 +35,11 @@ func TestSpecValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestSpecRequiresAbsoluteExecutable(t *testing.T) {
+	spec := validSpec()
+	spec.Argv[0] = "true"
+	if err := spec.Validate(); err == nil {
+		t.Fatal("relative executable was accepted")
+	}
+}
