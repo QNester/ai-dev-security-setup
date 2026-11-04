@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/QNester/ai-dev-security-setup/internal/config"
@@ -101,9 +100,17 @@ func (s Store) Save(value State) error {
 }
 
 func (s Store) Backup() (Backup, error) {
-	data, err := os.ReadFile(s.Path)
+	file, err := fsx.SafeOpenRegular(s.Path)
 	if err != nil {
 		return Backup{}, err
+	}
+	data, readErr := io.ReadAll(file)
+	closeErr := file.Close()
+	if readErr != nil {
+		return Backup{}, readErr
+	}
+	if closeErr != nil {
+		return Backup{}, closeErr
 	}
 	backup := Backup{
 		Source: s.Path,

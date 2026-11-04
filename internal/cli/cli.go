@@ -41,6 +41,7 @@ type commonFlags struct {
 	json       bool
 	verbose    bool
 	backend    string
+	backendSet bool
 	configPath string
 	statePath  string
 }
@@ -295,16 +296,24 @@ func (a *App) runEnter(args []string) error {
 }
 
 func (a *App) loadConfig(common commonFlags) (config.Config, error) {
+	var cfg config.Config
+	var err error
 	if common.configPath != "" {
-		return config.Load(common.configPath)
+		cfg, err = config.Load(common.configPath)
+	} else {
+		var owner, home string
+		owner, home, err = a.owner()
+		cfg = config.Default(a.Platform, owner, home)
 	}
-	owner, home, err := a.owner()
 	if err != nil {
 		return config.Config{}, err
 	}
-	cfg := config.Default(a.Platform, owner, home)
-	cfg.Backend = common.backend
-	cfg.StatePath = a.statePath(common)
+	if common.backendSet || common.configPath == "" {
+		cfg.Backend = common.backend
+	}
+	if common.statePath != "" || common.configPath == "" {
+		cfg.StatePath = a.statePath(common)
+	}
 	return cfg, nil
 }
 
@@ -363,7 +372,11 @@ func addCommonFlags(fs *flag.FlagSet, common *commonFlags) {
 	fs.BoolVar(&common.yes, "y", common.yes, "alias for --yes")
 	fs.BoolVar(&common.json, "json", common.json, "emit JSON")
 	fs.BoolVar(&common.verbose, "verbose", common.verbose, "enable verbose diagnostics")
-	fs.StringVar(&common.backend, "backend", common.backend, "native, vm, or auto")
+	fs.Func("backend", "native, vm, or auto", func(value string) error {
+		common.backend = value
+		common.backendSet = true
+		return nil
+	})
 	fs.StringVar(&common.configPath, "config", common.configPath, "load a JSON configuration")
 	fs.StringVar(&common.statePath, "state", common.statePath, "override the state file path")
 }

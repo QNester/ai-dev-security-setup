@@ -23,3 +23,8 @@ venv/
 *~
 *.bak
 *.orig
+
+# Go build and test output
+/sandboxctl
+/dist/
+/coverage.out
