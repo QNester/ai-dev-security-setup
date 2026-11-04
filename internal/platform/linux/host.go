@@ -70,6 +70,12 @@ func (h Host) Prepare(ctx context.Context, cfg config.Config) (bool, error) {
 	return wroteProfile, nil
 }
 
+// EnsurePackages installs the commands and certificate bundle required by the
+// Linux lifecycle. It is used by install and by `doctor --fix`.
+func (h Host) EnsurePackages(ctx context.Context) error {
+	return h.ensurePackages(ctx)
+}
+
 func (h Host) ensurePackages(ctx context.Context) error {
 	var missing []string
 	for _, command := range requiredCommands {

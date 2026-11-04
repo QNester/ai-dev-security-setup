@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/QNester/ai-dev-security-setup/internal/platform/detect"
@@ -45,6 +46,23 @@ func TestDoctorExitCodes(t *testing.T) {
 				t.Fatalf("code=%d want=%d", code, test.code)
 			}
 		})
+	}
+}
+
+func TestDoctorFixRequiresYes(t *testing.T) {
+	app, _, stderr := testApp()
+	if code := app.Run(context.Background(), "sandboxctl", []string{"doctor", "--fix"}); code != ExitUsage {
+		t.Fatalf("code=%d", code)
+	}
+	if !strings.Contains(stderr.String(), "--yes") {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestDoctorFixRejectsJSON(t *testing.T) {
+	app, _, _ := testApp()
+	if code := app.Run(context.Background(), "sandboxctl", []string{"doctor", "--fix", "--yes", "--json"}); code != ExitUsage {
+		t.Fatalf("code=%d", code)
 	}
 }
 

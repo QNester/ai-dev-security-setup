@@ -48,6 +48,7 @@ its future descriptor-based path.
 ```text
 cmd/sandboxctl/              process entry point
 internal/cli/                commands, output, and exit codes
+internal/bootstrap/          doctor --fix prerequisite installation
 internal/config/             defaults, JSON loading, validation
 internal/state/              state.json, backup, restore
 internal/plan/               install/update/uninstall plans and execution

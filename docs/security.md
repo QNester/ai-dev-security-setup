@@ -35,6 +35,11 @@ Bubblewrap argument list. `review` remains Phase 3. The Linux path is not yet
 verified on an Ubuntu 22.04/24.04 VM, so parity with the reference installer is
 not claimed.
 
+`doctor --fix --yes` is the only command that installs host prerequisites. On
+Linux it runs the apt package step; on macOS it installs Lima with Homebrew when
+no VM provider exists. Homebrew itself is never installed automatically because
+its official installer is an interactive vendor script requiring sudo.
+
 The atomic state writer rejects symlinks throughout the destination chain,
 group/other-writable and setgid components, and unexpected owners. Directory
 `fsync` ignores only `EINVAL`/`ENOTSUP` for filesystems such as APFS; other I/O

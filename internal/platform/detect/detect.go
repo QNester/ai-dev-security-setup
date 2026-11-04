@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -208,8 +209,18 @@ func (d Detector) commandCheck(report *Report, command string, required bool, la
 }
 
 func (d Detector) hasCommand(name string) bool {
-	_, err := d.LookPath(name)
-	return err == nil
+	if _, err := d.LookPath(name); err == nil {
+		return true
+	}
+	// Homebrew installs into a prefix that may not be on the PATH of the
+	// process that just performed the installation.
+	for _, directory := range []string{"/opt/homebrew/bin", "/usr/local/bin"} {
+		if info, err := d.Stat(filepath.Join(directory, name)); err == nil && info != nil &&
+			!info.IsDir() && info.Mode().Perm()&0o111 != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Report) add(status, name, detail string) {

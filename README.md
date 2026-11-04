@@ -50,6 +50,7 @@ The project currently uses only the Go standard library. The permitted future
 
 ```text
 sandboxctl doctor [--backend native|vm|auto]
+sandboxctl doctor --fix --yes [--backend native|vm|auto]
 sandboxctl install --cli claude,opencode --backend auto --dry-run
 sandboxctl update --dry-run
 sandboxctl uninstall --dry-run
@@ -62,6 +63,13 @@ Human output is formatted text with green success and red error lines. Colors ar
 enabled only on a terminal and are disabled by `NO_COLOR` or `--no-color`.
 `--json` remains an explicit opt-in for automation and turns errors into JSON on
 stderr.
+
+`doctor --fix --yes` installs missing prerequisites. On Linux it runs the apt
+package step; on macOS it installs Lima with Homebrew when neither Lima nor UTM
+is present. Homebrew itself is never installed automatically because its
+official installer requires an interactive vendor script and sudo. `--fix`
+cannot be combined with `--json`; `--fix --dry-run` prints the macOS Homebrew
+command without running it.
 
 Common flags are `--dry-run`, `--yes`, `--json`, `--no-color`, `--verbose`,
 `--backend`, `--config`, and `--state`. Place them after the command. `--config`

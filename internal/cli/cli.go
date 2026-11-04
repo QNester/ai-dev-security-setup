@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/QNester/ai-dev-security-setup/internal/bootstrap"
 	"github.com/QNester/ai-dev-security-setup/internal/config"
 	coreruntime "github.com/QNester/ai-dev-security-setup/internal/core/runtime"
 	"github.com/QNester/ai-dev-security-setup/internal/core/shared"
@@ -95,7 +96,7 @@ func (a *App) Run(ctx context.Context, argv0 string, args []string) int {
 		a.printUsage()
 		return ExitOK
 	case "doctor":
-		err = a.runDoctor(args[1:])
+		err = a.runDoctor(ctx, args[1:])
 	case "install":
 		err = a.runInstall(ctx, args[1:])
 	case "update":
@@ -139,10 +140,12 @@ func dispatchSymlink(name string, args []string) []string {
 	return args
 }
 
-func (a *App) runDoctor(args []string) error {
+func (a *App) runDoctor(ctx context.Context, args []string) error {
 	var common commonFlags
+	var fix bool
 	fs := newFlagSet("doctor")
 	addCommonFlags(fs, &common)
+	fs.BoolVar(&fix, "fix", false, "install missing prerequisites")
 	if err := fs.Parse(args); err != nil {
 		return usageError(err)
 	}
@@ -157,6 +160,20 @@ func (a *App) runDoctor(args []string) error {
 	detector.GOARCH = a.Arch
 	if _, err := detect.ResolveBackend(a.Platform, common.backend); err != nil {
 		return usageError(err)
+	}
+	if fix {
+		if common.json {
+			return usageError(errors.New("doctor --fix cannot be combined with --json"))
+		}
+		if !common.dryRun && !common.yes {
+			return usageError(errors.New("doctor --fix requires --yes (or --dry-run)"))
+		}
+		if err := bootstrap.Fix(ctx, bootstrap.Options{
+			GOOS: a.Platform, EUID: a.EUID, LookPath: exec.LookPath, Getenv: a.Getenv,
+			Stdout: a.Stdout, Stderr: a.Stderr, DryRun: common.dryRun,
+		}, common.backend); err != nil {
+			return err
+		}
 	}
 	report, err := detector.Inspect(common.backend)
 	if err != nil {
@@ -788,6 +805,7 @@ func (a *App) printUsage() {
 
 Commands:
   doctor                 inspect host capabilities (read-only)
+  doctor --fix --yes     install missing prerequisites
   install --cli LIST     plan or install selected coding CLIs
   update                 update from saved state (requires root + --yes)
   uninstall              remove integration recorded in saved state
