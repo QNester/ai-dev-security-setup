@@ -20,7 +20,9 @@ installer in this repository; the Go binary has no Bash or Python runtime.
 - CLIs are installed without project access and sealed in a root-owned runtime.
 - Linux uses Bubblewrap, UID-scoped nftables, systemd, and `setfacl`.
 - Native macOS uses deprecated Seatbelt, chmod ACLs, and launchd on an explicit
-  best-effort basis. `--backend auto` selects the VM backend on macOS.
+  best-effort basis. `--backend auto` selects the VM backend on macOS. Lima is
+  the default and only automatically installable VM provider; Docker/Podman are
+  explicit Phase 5 providers and are never selected automatically.
 - Launchers are symlinks to one root-owned `sandboxctl`, never shell wrappers.
 - State-driven uninstall and verification rollback are architectural requirements.
 
@@ -67,9 +69,10 @@ stderr.
 `doctor --fix --yes` installs missing prerequisites. On Linux it runs the apt
 package step; on macOS it installs Lima with Homebrew when neither Lima nor UTM
 is present. Homebrew itself is never installed automatically because its
-official installer requires an interactive vendor script and sudo. `--fix`
-cannot be combined with `--json`; `--fix --dry-run` prints the macOS Homebrew
-command without running it.
+official installer requires an interactive vendor script and sudo. Docker and
+Podman are intentionally not treated as automatic VM providers; they remain a
+Phase 5 option. `--fix` cannot be combined with `--json`; `--fix --dry-run`
+prints the macOS Homebrew command without running it.
 
 Common flags are `--dry-run`, `--yes`, `--json`, `--no-color`, `--verbose`,
 `--backend`, `--config`, and `--state`. Place them after the command. `--config`

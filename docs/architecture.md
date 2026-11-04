@@ -43,6 +43,17 @@ bwrap`. The inner Bash entrypoint sources the AI-owned secrets file and executes
 the selected CLI, so secrets never become Bubblewrap arguments. `review` keeps
 its future descriptor-based path.
 
+## Phase 5 VM provider scope
+
+Lima remains the default and only automatically installable macOS VM provider;
+UTM remains a manual alternative. Docker and Podman are deliberately excluded
+from `--backend auto` because they are container runtimes with a different
+daemon, mount, network, image-supply, and lifecycle model. They may become
+explicit Phase 5 providers only after rootless operation, pinned images, dropped
+capabilities, no Docker socket, controlled networking, shared-tree-only mounts,
+and state-driven cleanup are implemented and verified. See
+[ADR 0004](adr/0004-container-providers-deferred-to-phase-5.md).
+
 ## Repository tree
 
 ```text
@@ -65,7 +76,7 @@ internal/platform/
   base/                      backend interfaces and portable Spec
   linux/                     Bubblewrap/nftables/systemd/setfacl adapter
   darwin/                    Seatbelt/chmod ACL/launchd/dscl adapter
-  vm/                        Lima/UTM fallback adapter
+  vm/                        Lima/UTM adapter; container providers deferred to Phase 5
 internal/templates/
   linux/                     embedded unit and nftables templates
   darwin/                    embedded plist and SBPL templates

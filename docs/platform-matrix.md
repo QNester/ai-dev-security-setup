@@ -21,3 +21,8 @@ back to native Seatbelt.
 Linux native now mutates the host and still needs Ubuntu 22.04/24.04 VM runs.
 macOS native and VM backends continue to stop before mutation. Integration
 targets listed above are requirements, not a claim of tested support today.
+
+Lima is the default and only automatically installable VM provider. UTM remains
+a manual alternative. Docker and Podman are not selected by `--backend auto` and
+are deferred to Phase 5 as explicit, separately validated providers; see
+[ADR 0004](adr/0004-container-providers-deferred-to-phase-5.md).
