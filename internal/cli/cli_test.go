@@ -174,6 +174,21 @@ func TestNoColorDisablesANSI(t *testing.T) {
 	}
 }
 
+func TestSpinnerRendersAndClears(t *testing.T) {
+	app, _, stderr := testApp()
+	app.forceSpinner = true
+	spin := app.startSpinner("working")
+	spin.Set("next step")
+	spin.Stop()
+	output := stderr.String()
+	if !strings.Contains(output, "working") || !strings.Contains(output, "⠋") {
+		t.Fatalf("spinner did not render: %q", output)
+	}
+	if !strings.HasSuffix(output, "\r\x1b[2K") {
+		t.Fatalf("spinner did not clear its line: %q", output)
+	}
+}
+
 func errorsIsNotExist(err error) bool {
 	return err != nil && os.IsNotExist(err)
 }

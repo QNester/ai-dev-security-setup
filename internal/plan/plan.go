@@ -60,13 +60,27 @@ type Result struct {
 	Steps     []string `json:"steps"`
 }
 
+// ProgressFunc receives a short phase ("apply", "verify", "rollback") and the
+// action name. It must be fast and must not block; the CLI uses it to update a
+// terminal spinner.
+type ProgressFunc func(phase, name string)
+
 func Execute(ctx context.Context, value Plan, dryRun bool) (Result, error) {
+	return ExecuteWithProgress(ctx, value, dryRun, nil)
+}
+
+func ExecuteWithProgress(ctx context.Context, value Plan, dryRun bool, progress ProgressFunc) (Result, error) {
 	result := Result{Operation: value.Operation, DryRun: dryRun}
 	for _, action := range value.Actions {
 		result.Steps = append(result.Steps, action.Name())
 	}
 	if dryRun {
 		return result, nil
+	}
+	report := func(phase, name string) {
+		if progress != nil {
+			progress(phase, name)
+		}
 	}
 	var applied []Action
 	rollback := func(cause error) (Result, error) {
@@ -77,6 +91,7 @@ func Execute(ctx context.Context, value Plan, dryRun bool) (Result, error) {
 		defer cancel()
 		problems := []error{cause}
 		for i := len(applied) - 1; i >= 0; i-- {
+			report("rollback", applied[i].Name())
 			if err := invoke(rollbackCtx, applied[i].Rollback); err != nil {
 				problems = append(problems, fmt.Errorf("rollback %s: %w", applied[i].Name(), err))
 			}
@@ -88,6 +103,7 @@ func Execute(ctx context.Context, value Plan, dryRun bool) (Result, error) {
 			return rollback(fmt.Errorf("before apply %s: %w", action.Name(), err))
 		}
 		applied = append(applied, action)
+		report("apply", action.Name())
 		if err := invoke(ctx, action.Apply); err != nil {
 			return rollback(fmt.Errorf("apply %s: %w", action.Name(), err))
 		}
@@ -96,6 +112,7 @@ func Execute(ctx context.Context, value Plan, dryRun bool) (Result, error) {
 		if err := ctx.Err(); err != nil {
 			return rollback(fmt.Errorf("before verify %s: %w", action.Name(), err))
 		}
+		report("verify", action.Name())
 		if err := invoke(ctx, action.Verify); err != nil {
 			return rollback(fmt.Errorf("verify %s: %w", action.Name(), err))
 		}

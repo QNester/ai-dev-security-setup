@@ -61,10 +61,11 @@ sandboxctl review /absolute/path/to/FILE
 sandboxctl enter --tool claude --start-dir /absolute/path/to/DIR
 ```
 
-Human output is formatted text with green success and red error lines. Colors are
-enabled only on a terminal and are disabled by `NO_COLOR` or `--no-color`.
-`--json` remains an explicit opt-in for automation and turns errors into JSON on
-stderr.
+Human output is formatted text with green success and red error lines. Long
+operations show an animated spinner with the current lifecycle step; the spinner
+and colors are enabled only on a terminal and are disabled for JSON or piped
+output. Colors can also be disabled with `NO_COLOR` or `--no-color`. `--json`
+remains an explicit opt-in for automation and turns errors into JSON on stderr.
 
 `doctor --fix --yes` installs missing prerequisites. On Linux it runs the apt
 package step; on macOS it installs Lima with Homebrew when neither Lima nor UTM

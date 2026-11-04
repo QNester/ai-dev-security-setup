@@ -37,17 +37,18 @@ const (
 )
 
 type App struct {
-	Stdout     io.Writer
-	Stderr     io.Writer
-	Stdin      io.Reader
-	Getenv     func(string) string
-	Platform   string
-	Arch       string
-	EUID       int
-	Detector   *detect.Detector
-	jsonErrors bool
-	noColor    bool
-	forceColor bool
+	Stdout       io.Writer
+	Stderr       io.Writer
+	Stdin        io.Reader
+	Getenv       func(string) string
+	Platform     string
+	Arch         string
+	EUID         int
+	Detector     *detect.Detector
+	jsonErrors   bool
+	noColor      bool
+	forceColor   bool
+	forceSpinner bool
 }
 
 type commonFlags struct {
@@ -168,14 +169,24 @@ func (a *App) runDoctor(ctx context.Context, args []string) error {
 		if !common.dryRun && !common.yes {
 			return usageError(errors.New("doctor --fix requires --yes (or --dry-run)"))
 		}
-		if err := bootstrap.Fix(ctx, bootstrap.Options{
+		var fixSpinner *spinner
+		if a.Platform != "darwin" {
+			// Homebrew prints its own progress; apt is silent, so only the
+			// Linux package step gets a spinner.
+			fixSpinner = a.startSpinner("installing missing prerequisites...")
+		}
+		err := bootstrap.Fix(ctx, bootstrap.Options{
 			GOOS: a.Platform, EUID: a.EUID, LookPath: exec.LookPath, Getenv: a.Getenv,
 			Stdout: a.Stdout, Stderr: a.Stderr, DryRun: common.dryRun,
-		}, common.backend); err != nil {
+		}, common.backend)
+		fixSpinner.Stop()
+		if err != nil {
 			return err
 		}
 	}
+	spin := a.startSpinner("inspecting host capabilities...")
 	report, err := detector.Inspect(common.backend)
+	spin.Stop()
 	if err != nil {
 		return err
 	}
@@ -185,26 +196,30 @@ func (a *App) runDoctor(ctx context.Context, args []string) error {
 		}
 	} else {
 		color := a.colored(a.Stdout)
-		fmt.Fprintf(a.Stdout, "OS: %s/%s\nBackend: %s\n", report.OS, report.Arch, report.Backend)
-		for _, check := range report.Checks {
-			label := strings.ToUpper(check.Status)
-			if color {
-				fmt.Fprintf(a.Stdout, "%s%-7s%s %s: %s\n", doctorColor(check.Status), label, ansiReset, check.Name, check.Detail)
-			} else {
-				fmt.Fprintf(a.Stdout, "%-7s %s: %s\n", label, check.Name, check.Detail)
+		if color {
+			fmt.Fprintf(a.Stdout, "%ssandboxctl doctor%s\n", ansiBold, ansiReset)
+			fmt.Fprintf(a.Stdout, "%s%s%s\n", ansiDim, strings.Repeat("─", 52), ansiReset)
+			fmt.Fprintf(a.Stdout, "  %sOS       %s/%s%s\n", ansiDim, report.OS, report.Arch, ansiReset)
+			fmt.Fprintf(a.Stdout, "  %sBackend  %s%s\n\n", ansiDim, report.Backend, ansiReset)
+			for _, check := range report.Checks {
+				fmt.Fprintf(a.Stdout, "  %s%s%s %-20s %s\n",
+					doctorColor(check.Status), doctorIcon(check.Status), ansiReset, check.Name, check.Detail)
 			}
-		}
-		for _, warning := range report.Warnings {
-			if color {
-				fmt.Fprintf(a.Stdout, "%s! %s%s\n", ansiYellow, warning, ansiReset)
-			} else {
+			for _, warning := range report.Warnings {
+				fmt.Fprintf(a.Stdout, "  %s!%s %s\n", ansiYellow, ansiReset, warning)
+			}
+			if report.Healthy() {
+				fmt.Fprintf(a.Stdout, "\n  %s✔ host is ready%s\n", ansiGreen, ansiReset)
+			}
+		} else {
+			fmt.Fprintf(a.Stdout, "OS: %s/%s\nBackend: %s\n", report.OS, report.Arch, report.Backend)
+			for _, check := range report.Checks {
+				fmt.Fprintf(a.Stdout, "%-7s %s: %s\n", strings.ToUpper(check.Status), check.Name, check.Detail)
+			}
+			for _, warning := range report.Warnings {
 				fmt.Fprintf(a.Stdout, "WARNING %s\n", warning)
 			}
-		}
-		if report.Healthy() {
-			if color {
-				fmt.Fprintf(a.Stdout, "%s✔ host is ready%s\n", ansiGreen, ansiReset)
-			} else {
+			if report.Healthy() {
 				fmt.Fprintln(a.Stdout, "host is ready")
 			}
 		}
@@ -276,7 +291,7 @@ func (a *App) runInstall(ctx context.Context, args []string) error {
 		return err
 	}
 	value := plan.Install(cfg, plan.Deps{Backends: backends, Store: state.Store{Path: cfg.StatePath}})
-	if _, err := plan.Execute(ctx, value, common.dryRun); err != nil {
+	if _, err := a.executePlan(ctx, value, common.dryRun); err != nil {
 		return err
 	}
 	return a.printPlan(value, common)
@@ -330,7 +345,7 @@ func (a *App) runStatePlan(ctx context.Context, operation string, args []string)
 	} else {
 		value = plan.Uninstall(st, deps)
 	}
-	if _, err := plan.Execute(ctx, value, common.dryRun); err != nil {
+	if _, err := a.executePlan(ctx, value, common.dryRun); err != nil {
 		return err
 	}
 	return a.printPlan(value, common)
@@ -356,7 +371,9 @@ func (a *App) runStatus(args []string) error {
 			return writeJSON(a.Stdout, map[string]bool{"installed": false})
 		}
 		if a.colored(a.Stdout) {
-			fmt.Fprintf(a.Stdout, "%s● not installed%s\n", ansiYellow, ansiReset)
+			fmt.Fprintf(a.Stdout, "%ssandboxctl status%s\n", ansiBold, ansiReset)
+			fmt.Fprintf(a.Stdout, "%s%s%s\n", ansiDim, strings.Repeat("─", 52), ansiReset)
+			fmt.Fprintf(a.Stdout, "  %s● not installed%s\n", ansiYellow, ansiReset)
 		} else {
 			fmt.Fprintln(a.Stdout, "not installed")
 		}
@@ -372,8 +389,12 @@ func (a *App) runStatus(args []string) error {
 		return writeJSON(a.Stdout, map[string]any{"installed": true, "state": st})
 	}
 	if a.colored(a.Stdout) {
-		fmt.Fprintf(a.Stdout, "%s✔ installed%s: platform=%s backend=%s clis=%s\n",
-			ansiGreen, ansiReset, st.Platform, st.Backend, strings.Join(st.Runtime.CLIs, ","))
+		fmt.Fprintf(a.Stdout, "%ssandboxctl status%s\n", ansiBold, ansiReset)
+		fmt.Fprintf(a.Stdout, "%s%s%s\n", ansiDim, strings.Repeat("─", 52), ansiReset)
+		fmt.Fprintf(a.Stdout, "  %s✔ installed%s\n", ansiGreen, ansiReset)
+		fmt.Fprintf(a.Stdout, "  %splatform  %s%s\n", ansiDim, st.Platform, ansiReset)
+		fmt.Fprintf(a.Stdout, "  %sbackend   %s%s\n", ansiDim, st.Backend, ansiReset)
+		fmt.Fprintf(a.Stdout, "  %sclis      %s%s\n", ansiDim, strings.Join(st.Runtime.CLIs, ", "), ansiReset)
 	} else {
 		fmt.Fprintf(a.Stdout, "installed: platform=%s backend=%s clis=%s\n",
 			st.Platform, st.Backend, strings.Join(st.Runtime.CLIs, ","))
@@ -672,6 +693,21 @@ func (a *App) stateStore(common commonFlags) (state.Store, error) {
 	return state.Store{Path: a.statePath(common)}, nil
 }
 
+func (a *App) executePlan(ctx context.Context, value plan.Plan, dryRun bool) (plan.Result, error) {
+	if dryRun {
+		return plan.Execute(ctx, value, true)
+	}
+	spin := a.startSpinner(value.Operation + ": starting")
+	defer spin.Stop()
+	return plan.ExecuteWithProgress(ctx, value, false, func(phase, name string) {
+		if phase == "rollback" {
+			spin.Set(value.Operation + " · rollback: " + name)
+			return
+		}
+		spin.Set(value.Operation + " · " + name)
+	})
+}
+
 func (a *App) printPlan(value plan.Plan, common commonFlags) error {
 	result := plan.Result{Operation: value.Operation, DryRun: common.dryRun}
 	for _, action := range value.Actions {
@@ -685,10 +721,17 @@ func (a *App) printPlan(value plan.Plan, common commonFlags) error {
 		status = "dry-run"
 	}
 	if a.colored(a.Stdout) {
-		fmt.Fprintf(a.Stdout, "%s✔ %s %s%s\n", ansiGreen, value.Operation, status, ansiReset)
-		for _, action := range value.Actions {
-			fmt.Fprintf(a.Stdout, "  %s•%s %s\n", ansiDim, ansiReset, action.Name())
+		fmt.Fprintf(a.Stdout, "%ssandboxctl%s\n", ansiBold, ansiReset)
+		fmt.Fprintf(a.Stdout, "%s%s%s\n", ansiDim, strings.Repeat("─", 52), ansiReset)
+		fmt.Fprintf(a.Stdout, "%s✔%s %s %s\n", ansiGreen, ansiReset, value.Operation, status)
+		for index, action := range value.Actions {
+			fmt.Fprintf(a.Stdout, "  %s%2d.%s %s\n", ansiDim, index+1, ansiReset, action.Name())
 		}
+		label := "actions"
+		if common.dryRun {
+			label = "planned actions"
+		}
+		fmt.Fprintf(a.Stdout, "\n  %s%d %s%s\n", ansiDim, len(value.Actions), label, ansiReset)
 		return nil
 	}
 	fmt.Fprintf(a.Stdout, "%s (%s)\n", value.Operation, status)
@@ -725,10 +768,12 @@ func addCommonFlags(fs *flag.FlagSet, common *commonFlags) {
 
 const (
 	ansiReset  = "\x1b[0m"
+	ansiBold   = "\x1b[1m"
+	ansiDim    = "\x1b[2m"
 	ansiRed    = "\x1b[31m"
 	ansiGreen  = "\x1b[32m"
 	ansiYellow = "\x1b[33m"
-	ansiDim    = "\x1b[2m"
+	ansiCyan   = "\x1b[36m"
 )
 
 func (a *App) colored(writer io.Writer) bool {
@@ -757,6 +802,17 @@ func doctorColor(status string) string {
 		return ansiYellow
 	default:
 		return ansiRed
+	}
+}
+
+func doctorIcon(status string) string {
+	switch status {
+	case detect.Pass:
+		return "✔"
+	case detect.Warn:
+		return "!"
+	default:
+		return "✖"
 	}
 }
 
@@ -801,6 +857,10 @@ func (a *App) fail(code int, err error) int {
 }
 
 func (a *App) printUsage() {
+	if a.colored(a.Stdout) {
+		fmt.Fprintf(a.Stdout, "%ssandboxctl%s\n", ansiBold, ansiReset)
+		fmt.Fprintf(a.Stdout, "%s%s%s\n", ansiDim, strings.Repeat("─", 52), ansiReset)
+	}
 	fmt.Fprintln(a.Stdout, `Usage: sandboxctl COMMAND [OPTIONS]
 
 Commands:

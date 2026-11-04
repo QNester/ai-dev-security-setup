@@ -25,6 +25,30 @@ func TestDryRunDoesNotApply(t *testing.T) {
 	}
 }
 
+func TestProgressReportsApplyVerifyAndRollback(t *testing.T) {
+	var events []string
+	value := Plan{Operation: "install", Actions: []Action{
+		FuncAction{Description: "one"},
+		FuncAction{
+			Description:  "two",
+			VerifyFunc:   func(context.Context) error { return errors.New("verify failed") },
+			RollbackFunc: func(context.Context) error { return nil },
+		},
+	}}
+	_, err := ExecuteWithProgress(context.Background(), value, false, func(phase, name string) {
+		events = append(events, phase+" "+name)
+	})
+	if err == nil {
+		t.Fatal("expected verification failure")
+	}
+	want := []string{
+		"apply one", "apply two", "verify one", "verify two", "rollback two", "rollback one",
+	}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events=%v want=%v", events, want)
+	}
+}
+
 func TestFailureRollsBackInReverseOrder(t *testing.T) {
 	var events []string
 	action := func(name string, applyErr error) Action {
