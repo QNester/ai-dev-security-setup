@@ -66,3 +66,60 @@ func TestLoadRejectsUnknownFields(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDarwinDefaultsAllowNativeAccountNamesAndSpaces(t *testing.T) {
+	cfg := Default("darwin", "John.Doe", "/Users/John Doe")
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SharedSource != "/Users/Shared/ai-dev-shared" {
+		t.Fatalf("unexpected macOS shared source: %s", cfg.SharedSource)
+	}
+	if cfg.TmpRoot != "/private/var/lib/ai-sandbox/tmp" {
+		t.Fatalf("unexpected macOS tmp root: %s", cfg.TmpRoot)
+	}
+}
+
+func TestStateMustNotOverlapManagedTrees(t *testing.T) {
+	for _, path := range []string{
+		"/opt/ai-tools/state.json", "/var/lib/ai-sandbox/tmp/state.json", "/srv/ai-dev-shared/state.json",
+	} {
+		cfg := Default("linux", "alice", "/home/alice")
+		cfg.StatePath = path
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("state path %s was accepted", path)
+		}
+	}
+}
+
+func TestLiteLLMRequiresHTTPSOffLoopback(t *testing.T) {
+	cfg := Default("linux", "alice", "/home/alice")
+	cfg.LiteLLMBaseURL = "http://example.com/v1"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("plain HTTP off loopback was accepted")
+	}
+	cfg.LiteLLMBaseURL = "https://example.com/v1"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("HTTPS endpoint was rejected: %v", err)
+	}
+}
+
+func TestReviewSizeHasUpperBound(t *testing.T) {
+	cfg := Default("linux", "alice", "/home/alice")
+	cfg.MaxReviewBytes = MaxReviewBytesLimit + 1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("oversized review limit was accepted")
+	}
+}
+
+func TestValidationErrorsAreDeterministic(t *testing.T) {
+	cfg := Default("linux", "alice", "/home/alice")
+	cfg.OwnerHome = "relative home"
+	cfg.AIHome = "relative ai"
+	first := cfg.Validate().Error()
+	for range 10 {
+		if got := cfg.Validate().Error(); got != first {
+			t.Fatalf("error order changed:\n%s\n%s", first, got)
+		}
+	}
+}

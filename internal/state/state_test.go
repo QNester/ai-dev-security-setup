@@ -14,10 +14,14 @@ func testState() State {
 		Platform: "linux",
 		Backend:  "bwrap",
 		Config:   config.Default("linux", "alice", "/home/alice"),
-		Runtime: Runtime{
-			Path: "/opt/ai-tools",
-			CLIs: []string{"claude"},
+		Created:  Created{User: "ai-dev", Group: "ai-dev"},
+		Shared: Shared{
+			Path: "/home/alice/Developer", ACL: "setfacl", Alias: "/srv/ai-dev-shared",
 		},
+		Services: []Service{{
+			Name: "ai-dev-isolation.service", Path: "/etc/systemd/system/ai-dev-isolation.service",
+		}},
+		Runtime: Runtime{Path: "/opt/ai-tools", CLIs: []string{"claude"}},
 	}
 }
 
@@ -39,7 +43,7 @@ func TestSaveLoadBackupRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	changed := original
-	changed.Backend = "changed"
+	changed.Shared.ACL = "changed"
 	if err := store.Save(changed); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +54,7 @@ func TestSaveLoadBackupRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restored.Backend != "bwrap" {
+	if restored.Shared.ACL != "setfacl" {
 		t.Fatalf("backup was not restored: %+v", restored)
 	}
 }

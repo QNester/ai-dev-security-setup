@@ -130,16 +130,3 @@ func (s Store) Restore(path string) error {
 	}
 	return s.Save(value)
 }
-
-func (s State) Validate() error {
-	if s.Version != Version {
-		return fmt.Errorf("unsupported state version %d", s.Version)
-	}
-	if s.Platform != "linux" && s.Platform != "darwin" {
-		return fmt.Errorf("unsupported state platform %q", s.Platform)
-	}
-	if s.Backend == "" {
-		return errors.New("state backend is required")
-	}
-	return s.Config.Validate()
-}

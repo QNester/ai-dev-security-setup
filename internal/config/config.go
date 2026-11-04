@@ -39,9 +39,13 @@ type Config struct {
 func Default(platform, ownerUser, ownerHome string) Config {
 	aiHome := "/home/ai-dev"
 	statePath := "/var/lib/ai-sandbox/state.json"
+	sharedSource := "/srv/ai-dev-shared"
+	tmpRoot := "/var/lib/ai-sandbox/tmp"
 	if platform == "darwin" {
 		aiHome = "/Users/ai-dev"
 		statePath = "/Library/Application Support/ai-sandbox/state.json"
+		sharedSource = "/Users/Shared/ai-dev-shared"
+		tmpRoot = "/private/var/lib/ai-sandbox/tmp"
 	}
 	return Config{
 		Version:             Version,
@@ -50,9 +54,9 @@ func Default(platform, ownerUser, ownerHome string) Config {
 		OwnerHome:           ownerHome,
 		AIHome:              aiHome,
 		SharedDir:           filepath.Join(ownerHome, "Developer"),
-		SharedSource:        "/srv/ai-dev-shared",
+		SharedSource:        sharedSource,
 		RuntimeRoot:         "/opt/ai-tools",
-		TmpRoot:             "/var/lib/ai-sandbox/tmp",
+		TmpRoot:             tmpRoot,
 		StatePath:           statePath,
 		OwnerSSHKey:         filepath.Join(ownerHome, ".ssh", "ai-dev-deploy"),
 		CLIs:                []string{"claude"},
