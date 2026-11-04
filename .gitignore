@@ -1,0 +1,25 @@
+# Local secrets and generated configuration
+litellm.env
+litellm.config.yaml
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.log
+
+# Python virtual environments and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor and OS files
+.DS_Store
+*.swp
+*.swo
+*~
+*.bak
+*.orig
