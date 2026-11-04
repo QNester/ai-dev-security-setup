@@ -21,17 +21,22 @@ The implementation must preserve these invariants as backends are activated:
    state, not current configuration. Verification failure rolls back changes.
 7. No secret is embedded, committed, or serialized into state.
 
-## Phase 1 guarantees
+## Current guarantees
 
-Phase 1 is not a sandbox. It provides validation, state, process execution, and
-planning primitives. `install`, `update`, and `uninstall` without `--dry-run`
-return exit code 3 before changing the system. `enter` and `review` are also
-unavailable. Doctor only inspects files and executable presence.
+Phase 2 has started, but lifecycle mutation is still disabled. The Linux
+Bubblewrap adapter has a real read-only execution probe; this is not yet full
+sandbox parity. `install`, `update`, and `uninstall` without `--dry-run` return
+exit code 3 before changing the system. `enter` and `review` are unavailable.
 
-The atomic state writer rejects a symlink at the final path. Safe regular-file
-opens use `O_NOFOLLOW`; descriptor-based review identity checks remain Phase 3.
+The atomic state writer rejects symlinks throughout the destination chain,
+group/other-writable and setgid components, and unexpected owners. Directory
+`fsync` ignores only `EINVAL`/`ENOTSUP` for filesystems such as APFS; other I/O
+errors fail. The macOS fallback is unit-tested by error classification but still
+requires an on-host APFS test. Safe regular-file opens use `O_NOFOLLOW` and
+nonblocking opens; descriptor-based review identity checks remain Phase 3.
 Configuration validation rejects traversal, unclean paths, overlapping trees,
-root accounts, unknown JSON fields, and unsupported CLIs.
+root accounts, unknown JSON fields, and unsupported CLIs. Mutating install uses
+platform-specific safe roots for state and other system paths.
 
 ## Residual risk
 

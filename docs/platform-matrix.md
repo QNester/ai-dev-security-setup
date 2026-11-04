@@ -6,11 +6,12 @@
 | Accounts | `useradd`, `usermod`, `passwd` | `sysadminctl`, `dscl`, `dseditgroup` | Linux account backend in guest |
 | Shared access | `setfacl`, bind alias, fstab | `chmod +a/-a`, execute-only traversal, SBPL | virtiofs/9p plus Linux ACLs |
 | Sandbox | Bubblewrap namespaces | deprecated `sandbox-exec` Seatbelt | Bubblewrap in Linux guest |
+| User namespaces | unrestricted on 22.04; targeted AppArmor 4 profile on 24.04+ | N/A | Linux guest policy |
 | Network | UID nftables, configured DNS | SBPL/pf best-effort | Linux rules plus controlled proxy |
 | Services | systemd | launchd | systemd in guest |
 | Review | validated fd, `ro-bind-data` | root-owned staging and SBPL | Linux review backend |
 | Isolation claim | host-level, best-effort network | reduced, best-effort | preferred strict mode |
-| Phase 1 status | diagnostics/contracts only | diagnostics/contracts only | detection/contracts only |
+| Current status | Bubblewrap argv and real read-only probe; lifecycle disabled | diagnostics/contracts only | detection/contracts only |
 
 `--backend auto` selects Bubblewrap on Linux and VM on macOS. Selecting
 `--backend native` on macOS explicitly accepts reduced isolation. Absence of a

@@ -4,11 +4,11 @@
 Pi, and OpenCode on Linux and macOS. It is the successor to the Bash reference
 installer in this repository; the Go binary has no Bash or Python runtime.
 
-> **Phase 1 status:** configuration, state, dry-run planning, doctor, backend
-> contracts, tests, and CI are implemented. No system-mutating backend is active.
-> For `install`, `update`, and `uninstall`, only dry-run planning succeeds;
-> without `--dry-run` they return exit code 3 before changing the system.
-> `enter` and `review` intentionally return the same unavailable status.
+> **Phase 2 in progress:** the Phase 1 base is hardened, and the Linux
+> Bubblewrap adapter now builds sandbox argv and has a real read-only execution
+> test. No system-mutating backend is active. For `install`, `update`, and
+> `uninstall`, only dry-run planning succeeds; without `--dry-run` they return
+> exit code 3 before changing the system. `enter` and `review` remain unavailable.
 
 ## Target model
 
@@ -40,7 +40,7 @@ CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build ./cmd/sandboxctl
 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ./cmd/sandboxctl
 ```
 
-The project uses only the Go standard library in Phase 1. The permitted future
+The project currently uses only the Go standard library. The permitted future
 `golang.org/x/sys/unix` dependency is not needed yet.
 
 ## Commands
@@ -61,9 +61,10 @@ JSON; without it, defaults are derived from the owner account and platform.
 For `status`, `update`, and `uninstall`, an explicit `--state` wins; otherwise
 the state path comes from `--config`, then from the platform default.
 
-`--json` also makes errors structured on stderr. In Phase 1, `--yes` and
+`--json` also makes errors structured on stderr. Currently `--yes` and
 `--verbose` are accepted for interface compatibility but do not alter behavior;
-confirmation and verbose execution will be wired to real actions in Phase 2.
+confirmation and verbose execution will be wired to real mutating actions before
+those actions are enabled.
 
 Doctor reports OS/architecture, privileges, init system, Bubblewrap and user
 namespaces, nftables, ACL tooling, Seatbelt's deprecated status, and Lima/UTM on
@@ -80,7 +81,7 @@ sandboxctl install --cli claude,opencode --backend native --dry-run \
 
 Dry-run does not create users, state, directories, services, firewall rules,
 mounts, ACLs, launchers, or runtime files. A non-dry-run invocation exits before
-the first action in Phase 1.
+the first action while mutating plans remain disabled.
 
 ## Development
 
@@ -91,9 +92,17 @@ go test -race ./...
 go run honnef.co/go/tools/cmd/staticcheck@2024.1.1 ./...
 ```
 
-CI runs these checks and builds all four targets. Later phases add real Ubuntu
-VM integration tests before enabling mutation, fd-based review tests, then
-macOS native and VM backends.
+A real but non-mutating Linux Bubblewrap integration probe is available:
+
+```bash
+SANDBOXCTL_INTEGRATION=1 go test -tags=integration \
+  ./tests/integration/linux -run TestBubblewrapRunsTrue -v
+```
+
+CI runs the portable checks and builds all four targets. Before lifecycle
+mutation is enabled, Phase 2 still needs Ubuntu 22.04/24.04 VM integration,
+account/ACL/runtime/network/service adapters, state journaling, launchers, and
+state-driven uninstall. Review and the macOS backends remain later phases.
 
 ## Legacy reference
 

@@ -1,3 +1,4 @@
+# Requires AppArmor 4 (Ubuntu 24.04+). Do not load on Ubuntu 22.04.
 # Managed by sandboxctl. Remove during state-driven uninstall.
 abi <abi/4.0>,
 include <tunables/global>

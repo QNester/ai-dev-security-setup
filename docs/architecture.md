@@ -52,20 +52,27 @@ Core packages operate on accounts, paths, file permissions, and network policy.
 They do not construct Bubblewrap flags, SBPL, nftables syntax, or service-manager
 arguments. Those details belong to adapters implementing `platform/base`.
 
-`runner.OSRunner` uses `exec.CommandContext` directly. It never invokes a shell
-and never inherits the parent environment implicitly. Output capture is bounded,
-and cancellation kills the subprocess group with a bounded wait. Vendor
-installers may be shell programs, but will be executed as explicit external
-processes under the AI account in Phase 2.
+`runner.OSRunner` uses `exec.CommandContext` directly. It never invokes a shell,
+requires a clean absolute executable path, and never inherits the parent
+environment implicitly. Output capture is bounded, and cancellation kills the
+subprocess group with a bounded wait. Vendor installers may be shell programs,
+but will be executed as explicit external processes under the AI account.
+
+The Linux Bubblewrap adapter converts portable specs into argv without shell
+snippets. It clears the environment, sets sorted explicit variables, separates
+read-only and writable mounts, and applies namespaces and capability drops.
+The `tests/integration/linux` probe executes the resulting argv without host
+mutation.
 
 ## Planning and failure
 
-A plan is an ordered list of named actions. Execution applies each action and
-then verifies all applied actions. An apply or verification error triggers
-rollback in reverse order, including the action whose apply failed. Rollback
-uses a fresh two-minute context derived with `context.WithoutCancel`, so caller
-cancellation does not abort cleanup. Dry-run only materializes names and never
-invokes apply, rollback, or verification.
+A plan is an ordered list of named actions. Execution refuses to start an action
+when the caller context is already canceled. Panics in actions become errors.
+An apply or verification error triggers rollback in reverse order, including
+the action whose apply failed. Rollback uses a fresh two-minute context derived
+with `context.WithoutCancel`, so caller cancellation does not abort cleanup.
+Dry-run only materializes names and never invokes apply, rollback, or
+verification.
 
 The current plans describe the Phase 2 lifecycle but intentionally have no
 system-mutating implementation. This makes the CLI end-to-end behavior testable
@@ -81,8 +88,10 @@ are:
 
 Writes use a temporary file in the destination directory, file and directory
 `fsync`, and atomic rename. Existing symlinks and non-regular destinations are
-rejected. The parent must be a real, non-world-writable directory owned by root
-or the current user. Backup and restore APIs are available for Phase 2.
+rejected. Every existing component from the authorized filesystem root must be a
+real directory without group/other write or setgid bits and owned by root or the
+current user. Store paths must match the `state_path` recorded in their config.
+Backup and restore APIs are available for transactional lifecycle actions.
 
 Update and uninstall load the saved state. An explicit `--state` takes priority;
 otherwise `--config` supplies its `state_path`. Uninstall planning uses the

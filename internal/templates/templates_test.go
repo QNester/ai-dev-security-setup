@@ -9,7 +9,7 @@ import (
 var templateFiles = []string{
 	"linux/ai-dev-isolation.service",
 	"linux/ai-dev-isolation.nft",
-	"linux/ai-dev-bwrap.apparmor",
+	"linux/ai-dev-bwrap.apparmor4",
 	"darwin/ai-sandbox.plist",
 	"darwin/ai-sandbox.sb",
 }
