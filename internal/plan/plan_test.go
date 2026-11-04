@@ -67,3 +67,36 @@ func TestVerificationFailureRollsBack(t *testing.T) {
 		t.Fatalf("err=%v rolledBack=%v", err, rolledBack)
 	}
 }
+
+type rollbackContextKey struct{}
+
+func TestRollbackSurvivesCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), rollbackContextKey{}, "preserved"))
+	cancel()
+	rollbackCalled := false
+	value := Plan{Actions: []Action{FuncAction{
+		Description: "interrupted change",
+		ApplyFunc: func(ctx context.Context) error {
+			return ctx.Err()
+		},
+		RollbackFunc: func(ctx context.Context) error {
+			rollbackCalled = true
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if ctx.Value(rollbackContextKey{}) != "preserved" {
+				t.Error("rollback context did not preserve values")
+			}
+			if _, ok := ctx.Deadline(); !ok {
+				t.Error("rollback context has no timeout")
+			}
+			return nil
+		},
+	}}}
+	if _, err := Execute(ctx, value, false); err == nil {
+		t.Fatal("expected cancellation error")
+	}
+	if !rollbackCalled {
+		t.Fatal("rollback was not called")
+	}
+}

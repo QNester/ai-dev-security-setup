@@ -5,9 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 var ErrNotImplemented = errors.New("system changes are not implemented in Phase 1; use --dry-run")
+
+const RollbackTimeout = 2 * time.Minute
 
 type Action interface {
 	Name() string
@@ -67,9 +70,11 @@ func Execute(ctx context.Context, value Plan, dryRun bool) (Result, error) {
 	}
 	var applied []Action
 	rollback := func(cause error) (Result, error) {
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), RollbackTimeout)
+		defer cancel()
 		problems := []error{cause}
 		for i := len(applied) - 1; i >= 0; i-- {
-			if err := applied[i].Rollback(ctx); err != nil {
+			if err := applied[i].Rollback(rollbackCtx); err != nil {
 				problems = append(problems, fmt.Errorf("rollback %s: %w", applied[i].Name(), err))
 			}
 		}
