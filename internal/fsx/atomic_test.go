@@ -7,12 +7,12 @@ import (
 )
 
 func TestAtomicWriteAndSafeOpen(t *testing.T) {
-	dir := t.TempDir()
+	dir := testRoot(t)
 	path := filepath.Join(dir, "state.json")
-	if err := AtomicWriteFile(path, []byte("first"), 0o600); err != nil {
+	if err := AtomicWriteFileInRoot(dir, path, []byte("first"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := AtomicWriteFile(path, []byte("second"), 0o600); err != nil {
+	if err := AtomicWriteFileInRoot(dir, path, []byte("second"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	file, err := SafeOpenRegular(path)
@@ -34,7 +34,7 @@ func TestAtomicWriteAndSafeOpen(t *testing.T) {
 }
 
 func TestRefuseSymlinks(t *testing.T) {
-	dir := t.TempDir()
+	dir := testRoot(t)
 	target := filepath.Join(dir, "target")
 	if err := os.WriteFile(target, []byte("secret"), 0o600); err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestRefuseSymlinks(t *testing.T) {
 	if _, err := SafeOpenRegular(link); err == nil {
 		t.Fatal("SafeOpenRegular followed a symlink")
 	}
-	if err := AtomicWriteFile(link, []byte("changed"), 0o600); err == nil {
+	if err := AtomicWriteFileInRoot(dir, link, []byte("changed"), 0o600); err == nil {
 		t.Fatal("AtomicWriteFile replaced a symlink")
 	}
 	data, err := os.ReadFile(target)

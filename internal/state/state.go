@@ -60,9 +60,14 @@ type Backup struct {
 
 type Store struct {
 	Path string
+	Root string
 }
 
 func (s Store) Load() (State, error) {
+	return s.load(true)
+}
+
+func (s Store) load(checkPath bool) (State, error) {
 	var value State
 	file, err := fsx.SafeOpenRegular(s.Path)
 	if err != nil {
@@ -84,10 +89,16 @@ func (s Store) Load() (State, error) {
 	if err := value.Validate(); err != nil {
 		return value, err
 	}
+	if checkPath && s.Path != value.Config.StatePath {
+		return value, errors.New("state store path does not match config state_path")
+	}
 	return value, nil
 }
 
 func (s Store) Save(value State) error {
+	if s.Path != value.Config.StatePath {
+		return errors.New("state store path does not match config state_path")
+	}
 	if err := value.Validate(); err != nil {
 		return err
 	}
@@ -96,7 +107,7 @@ func (s Store) Save(value State) error {
 		return err
 	}
 	data = append(data, '\n')
-	return fsx.AtomicWriteFile(s.Path, data, 0o600)
+	return fsx.AtomicWriteFileInRoot(s.root(), s.Path, data, 0o600)
 }
 
 func (s Store) Backup() (Backup, error) {
@@ -116,7 +127,7 @@ func (s Store) Backup() (Backup, error) {
 		Source: s.Path,
 		Path:   fmt.Sprintf("%s.%d.bak", s.Path, time.Now().UnixNano()),
 	}
-	if err := fsx.AtomicWriteFile(backup.Path, data, 0o600); err != nil {
+	if err := fsx.AtomicWriteFileInRoot(s.root(), backup.Path, data, 0o600); err != nil {
 		return Backup{}, err
 	}
 	return backup, nil
@@ -124,9 +135,16 @@ func (s Store) Backup() (Backup, error) {
 
 func (s Store) Restore(path string) error {
 	backupStore := Store{Path: path}
-	value, err := backupStore.Load()
+	value, err := backupStore.load(false)
 	if err != nil {
 		return fmt.Errorf("load backup: %w", err)
 	}
 	return s.Save(value)
+}
+
+func (s Store) root() string {
+	if s.Root != "" {
+		return s.Root
+	}
+	return "/"
 }

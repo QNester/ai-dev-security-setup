@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,9 +26,16 @@ func testState() State {
 	}
 }
 
+func testStateAt(path string) State {
+	st := testState()
+	st.Config.StatePath = path
+	return st
+}
+
 func TestSaveLoadBackupRestore(t *testing.T) {
-	store := Store{Path: filepath.Join(t.TempDir(), "state", "state.json")}
-	original := testState()
+	dir := stateTestRoot(t)
+	store := Store{Path: filepath.Join(dir, "state", "state.json"), Root: dir}
+	original := testStateAt(store.Path)
 	if err := store.Save(original); err != nil {
 		t.Fatal(err)
 	}
@@ -44,8 +52,8 @@ func TestSaveLoadBackupRestore(t *testing.T) {
 	}
 	changed := original
 	changed.Shared.ACL = "changed"
-	if err := store.Save(changed); err != nil {
-		t.Fatal(err)
+	if err := store.Save(changed); err == nil {
+		t.Fatal("invalid ACL mechanism was accepted")
 	}
 	if err := store.Restore(backup.Path); err != nil {
 		t.Fatal(err)
@@ -59,11 +67,11 @@ func TestSaveLoadBackupRestore(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsSymlink(t *testing.T) {
-	dir := t.TempDir()
+func TestLoadRejectsSymlinkAndMismatchedPath(t *testing.T) {
+	dir := stateTestRoot(t)
 	path := filepath.Join(dir, "state.json")
-	store := Store{Path: path}
-	if err := store.Save(testState()); err != nil {
+	store := Store{Path: path, Root: dir}
+	if err := store.Save(testStateAt(path)); err != nil {
 		t.Fatal(err)
 	}
 	link := filepath.Join(dir, "link.json")
@@ -72,5 +80,16 @@ func TestLoadRejectsSymlink(t *testing.T) {
 	}
 	if _, err := (Store{Path: link}).Load(); err == nil {
 		t.Fatal("expected symlink error")
+	}
+	other := testState()
+	data, err := json.Marshal(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Load(); err == nil {
+		t.Fatal("state with mismatched config state_path was accepted")
 	}
 }

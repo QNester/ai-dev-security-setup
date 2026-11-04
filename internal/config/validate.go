@@ -121,10 +121,14 @@ func validateRelationships(c Config) []error {
 	if overlap(c.AIHome, c.TmpRoot) || overlap(c.SharedDir, c.TmpRoot) {
 		problems = append(problems, errors.New("tmp_root must be separate from homes and shared tree"))
 	}
-	for _, path := range []string{c.AIHome, c.SharedDir, c.RuntimeRoot, c.TmpRoot, c.SharedSource} {
+	for _, path := range []string{c.OwnerHome, c.AIHome, c.SharedDir, c.RuntimeRoot, c.TmpRoot, c.SharedSource} {
 		if overlap(path, c.StatePath) {
 			problems = append(problems, fmt.Errorf("state_path must not overlap %s", path))
 		}
+	}
+	switch filepath.Dir(c.StatePath) {
+	case "/", "/tmp", "/var/tmp", "/private/tmp":
+		problems = append(problems, errors.New("state_path requires a dedicated system directory"))
 	}
 	for _, protected := range []string{"/etc", "/usr", "/tmp", "/run", "/dev", "/proc", "/sys", "/boot", "/root"} {
 		if overlap(protected, c.SharedSource) {

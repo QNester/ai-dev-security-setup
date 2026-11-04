@@ -26,8 +26,12 @@ func (s State) Validate() error {
 	problems = append(problems, s.validateRuntime()...)
 	problems = append(problems, s.validateServices()...)
 	problems = append(problems, s.validateBackups()...)
+	problems = append(problems, s.validatePlatformPaths()...)
 	if s.Created.User != "" && s.Created.User != s.Config.AIUser {
 		problems = append(problems, errors.New("created user does not match configured AI user"))
+	}
+	if s.Created.Group != "" && !resourceNamePattern.MatchString(s.Created.Group) {
+		problems = append(problems, errors.New("created group must be a valid resource name"))
 	}
 	if s.Firewall != nil {
 		if !resourceNamePattern.MatchString(s.Firewall.Type) || !resourceNamePattern.MatchString(s.Firewall.Table) {
@@ -67,8 +71,13 @@ func (s State) validateShared() []error {
 	} else if s.Shared.Path != s.Config.SharedDir {
 		problems = append(problems, errors.New("shared path does not match config"))
 	}
-	if s.Shared.ACL == "" {
-		problems = append(problems, errors.New("shared ACL mechanism is required"))
+	switch {
+	case s.Platform == "linux" && s.Shared.ACL != "setfacl":
+		problems = append(problems, errors.New("linux shared ACL mechanism must be setfacl"))
+	case s.Platform == "darwin" && s.Backend == "seatbelt" && s.Shared.ACL != "chmod":
+		problems = append(problems, errors.New("native macOS shared ACL mechanism must be chmod"))
+	case s.Platform == "darwin" && s.Backend == "vm" && s.Shared.ACL != "vm":
+		problems = append(problems, errors.New("macOS VM shared ACL mechanism must be vm"))
 	}
 	if s.Platform == "linux" && s.Shared.Alias == "" {
 		problems = append(problems, errors.New("linux shared alias is required"))

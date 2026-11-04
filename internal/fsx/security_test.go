@@ -9,7 +9,7 @@ import (
 )
 
 func TestSafeOpenRegularRejectsFIFOWithoutBlocking(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "fifo")
+	path := filepath.Join(testRoot(t), "fifo")
 	if err := syscall.Mkfifo(path, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestSafeOpenRegularRejectsFIFOWithoutBlocking(t *testing.T) {
 }
 
 func TestAtomicWriteRejectsSymlinkParent(t *testing.T) {
-	dir := t.TempDir()
+	dir := testRoot(t)
 	realParent := filepath.Join(dir, "real")
 	if err := os.Mkdir(realParent, 0o700); err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestAtomicWriteRejectsSymlinkParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(linkParent, "state.json")
-	if err := AtomicWriteFile(path, []byte("data"), 0o600); err == nil {
+	if err := AtomicWriteFileInRoot(dir, path, []byte("data"), 0o600); err == nil {
 		t.Fatal("symlink parent was accepted")
 	}
 	if _, err := os.Stat(filepath.Join(realParent, "state.json")); !os.IsNotExist(err) {
@@ -51,11 +51,11 @@ func TestAtomicWriteRejectsSymlinkParent(t *testing.T) {
 }
 
 func TestAtomicWriteRejectsWorldWritableParent(t *testing.T) {
-	dir := t.TempDir()
+	dir := testRoot(t)
 	if err := os.Chmod(dir, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := AtomicWriteFile(filepath.Join(dir, "state.json"), []byte("data"), 0o600); err == nil {
+	if err := AtomicWriteFileInRoot(dir, filepath.Join(dir, "state.json"), []byte("data"), 0o600); err == nil {
 		t.Fatal("world-writable parent was accepted")
 	}
 }

@@ -15,6 +15,9 @@ import (
 func stateFixture(t *testing.T, platform string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	ownerHome := "/home/alice"
 	if platform == "darwin" {
 		ownerHome = "/Users/John Doe"
@@ -36,7 +39,7 @@ func stateFixture(t *testing.T, platform string) (string, string) {
 		st.Shared.ACL = "chmod"
 		st.Shared.Alias = ""
 	}
-	if err := (state.Store{Path: cfg.StatePath}).Save(st); err != nil {
+	if err := (state.Store{Path: cfg.StatePath, Root: dir}).Save(st); err != nil {
 		t.Fatal(err)
 	}
 	data, err := json.Marshal(cfg)
