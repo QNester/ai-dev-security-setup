@@ -72,31 +72,76 @@ type rollbackContextKey struct{}
 
 func TestRollbackSurvivesCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), rollbackContextKey{}, "preserved"))
-	cancel()
 	rollbackCalled := false
-	value := Plan{Actions: []Action{FuncAction{
-		Description: "interrupted change",
-		ApplyFunc: func(ctx context.Context) error {
-			return ctx.Err()
+	secondApplied := false
+	value := Plan{Actions: []Action{
+		FuncAction{
+			Description: "first change",
+			ApplyFunc: func(context.Context) error {
+				cancel()
+				return nil
+			},
+			RollbackFunc: func(ctx context.Context) error {
+				rollbackCalled = true
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if ctx.Value(rollbackContextKey{}) != "preserved" {
+					t.Error("rollback context did not preserve values")
+				}
+				if _, ok := ctx.Deadline(); !ok {
+					t.Error("rollback context has no timeout")
+				}
+				return nil
+			},
 		},
-		RollbackFunc: func(ctx context.Context) error {
-			rollbackCalled = true
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if ctx.Value(rollbackContextKey{}) != "preserved" {
-				t.Error("rollback context did not preserve values")
-			}
-			if _, ok := ctx.Deadline(); !ok {
-				t.Error("rollback context has no timeout")
-			}
-			return nil
+		FuncAction{
+			Description: "must not start",
+			ApplyFunc: func(context.Context) error {
+				secondApplied = true
+				return nil
+			},
 		},
-	}}}
+	}}
 	if _, err := Execute(ctx, value, false); err == nil {
 		t.Fatal("expected cancellation error")
 	}
-	if !rollbackCalled {
-		t.Fatal("rollback was not called")
+	if !rollbackCalled || secondApplied {
+		t.Fatalf("rollback=%v secondApplied=%v", rollbackCalled, secondApplied)
+	}
+}
+
+func TestCanceledContextPreventsFirstApply(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	value := Plan{Actions: []Action{FuncAction{
+		Description: "must not start",
+		ApplyFunc: func(context.Context) error {
+			called = true
+			return nil
+		},
+	}}}
+	if _, err := Execute(ctx, value, false); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
+	}
+	if called {
+		t.Fatal("apply ran with an already canceled context")
+	}
+}
+
+func TestApplyPanicIsErrorAndRollsBack(t *testing.T) {
+	rolledBack := false
+	value := Plan{Actions: []Action{FuncAction{
+		Description: "panic",
+		ApplyFunc:   func(context.Context) error { panic("unexpected") },
+		RollbackFunc: func(context.Context) error {
+			rolledBack = true
+			return nil
+		},
+	}}}
+	_, err := Execute(context.Background(), value, false)
+	if err == nil || rolledBack == false {
+		t.Fatalf("err=%v rolledBack=%v", err, rolledBack)
 	}
 }

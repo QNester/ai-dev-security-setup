@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var ErrNotImplemented = errors.New("system changes are not implemented in Phase 1; use --dry-run")
+var ErrNotImplemented = errors.New("system mutation is disabled for this backend; use --dry-run")
 
 const RollbackTimeout = 2 * time.Minute
 
@@ -70,26 +70,44 @@ func Execute(ctx context.Context, value Plan, dryRun bool) (Result, error) {
 	}
 	var applied []Action
 	rollback := func(cause error) (Result, error) {
+		if len(applied) == 0 {
+			return result, cause
+		}
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), RollbackTimeout)
 		defer cancel()
 		problems := []error{cause}
 		for i := len(applied) - 1; i >= 0; i-- {
-			if err := applied[i].Rollback(rollbackCtx); err != nil {
+			if err := invoke(rollbackCtx, applied[i].Rollback); err != nil {
 				problems = append(problems, fmt.Errorf("rollback %s: %w", applied[i].Name(), err))
 			}
 		}
 		return result, errors.Join(problems...)
 	}
 	for _, action := range value.Actions {
+		if err := ctx.Err(); err != nil {
+			return rollback(fmt.Errorf("before apply %s: %w", action.Name(), err))
+		}
 		applied = append(applied, action)
-		if err := action.Apply(ctx); err != nil {
+		if err := invoke(ctx, action.Apply); err != nil {
 			return rollback(fmt.Errorf("apply %s: %w", action.Name(), err))
 		}
 	}
 	for _, action := range applied {
-		if err := action.Verify(ctx); err != nil {
+		if err := ctx.Err(); err != nil {
+			return rollback(fmt.Errorf("before verify %s: %w", action.Name(), err))
+		}
+		if err := invoke(ctx, action.Verify); err != nil {
 			return rollback(fmt.Errorf("verify %s: %w", action.Name(), err))
 		}
 	}
 	return result, nil
+}
+
+func invoke(ctx context.Context, fn func(context.Context) error) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("action panic: %v", recovered)
+		}
+	}()
+	return fn(ctx)
 }
