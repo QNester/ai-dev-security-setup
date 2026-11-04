@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -44,5 +45,17 @@ func TestDoctorExitCodes(t *testing.T) {
 				t.Fatalf("code=%d want=%d", code, test.code)
 			}
 		})
+	}
+}
+
+func TestJSONTrueEnablesStructuredErrors(t *testing.T) {
+	app, _, stderr := testApp()
+	code := app.Run(context.Background(), "sandboxctl", []string{"doctor", "--backend", "vm", "--json=true"})
+	if code != ExitUsage {
+		t.Fatalf("code=%d", code)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
+		t.Fatalf("stderr=%q err=%v", stderr.String(), err)
 	}
 }

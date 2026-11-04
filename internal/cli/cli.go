@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/QNester/ai-dev-security-setup/internal/config"
@@ -60,6 +61,9 @@ func (a *App) Run(ctx context.Context, argv0 string, args []string) int {
 	for _, arg := range args {
 		if arg == "--json" {
 			a.jsonErrors = true
+		} else if value, ok := strings.CutPrefix(arg, "--json="); ok {
+			enabled, err := strconv.ParseBool(value)
+			a.jsonErrors = err == nil && enabled
 		}
 	}
 	args = dispatchSymlink(filepath.Base(argv0), args)
@@ -133,9 +137,12 @@ func (a *App) runDoctor(args []string) error {
 	}
 	detector.GOOS = a.Platform
 	detector.GOARCH = a.Arch
+	if _, err := detect.ResolveBackend(a.Platform, common.backend); err != nil {
+		return usageError(err)
+	}
 	report, err := detector.Inspect(common.backend)
 	if err != nil {
-		return usageError(err)
+		return err
 	}
 	if common.json {
 		if err := writeJSON(a.Stdout, report); err != nil {
@@ -197,7 +204,11 @@ func (a *App) runInstall(ctx context.Context, args []string) error {
 	if _, err := detect.ResolveBackend(a.Platform, cfg.Backend); err != nil {
 		return usageError(err)
 	}
-	if err := cfg.Validate(); err != nil {
+	if common.dryRun {
+		if err := cfg.Validate(); err != nil {
+			return err
+		}
+	} else if err := cfg.ValidateSystem(a.Platform); err != nil {
 		return err
 	}
 	value := plan.Install(cfg)

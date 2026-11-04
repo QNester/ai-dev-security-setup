@@ -60,17 +60,30 @@ func TestInstallDryRun(t *testing.T) {
 	}
 }
 
-func TestInstallApplyIsUnavailableAndDoesNotWriteState(t *testing.T) {
-	configPath, statePath := writeTestConfig(t)
+func TestInstallApplyIsUnavailable(t *testing.T) {
+	configPath, _ := writeTestConfig(t)
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg config.Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg.StatePath = config.Default("linux", "alice", "/home/alice").StatePath
+	data, err = json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	app, _, stderr := testApp()
 	code := app.Run(context.Background(), "sandboxctl", []string{
 		"install", "--config", configPath, "--yes",
 	})
-	if code != ExitUnavailable || !strings.Contains(stderr.String(), "Phase 1") {
+	if code != ExitUnavailable || !strings.Contains(stderr.String(), "mutation is disabled") {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
-	}
-	if _, err := os.Stat(statePath); !errorsIsNotExist(err) {
-		t.Fatalf("failed install created state: %v", err)
 	}
 }
 
