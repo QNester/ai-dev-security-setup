@@ -1,0 +1,7 @@
+(version 1)
+(deny default)
+(allow process-exec (literal "{{.Program}}"))
+(allow file-read* (subpath "/System") (subpath "/usr/lib") (subpath "/opt/ai-tools"))
+(allow file-read* file-write* (subpath "{{.AIHome}}") (subpath "{{.TmpRoot}}"))
+(allow file-read* file-write* (subpath "{{.SharedDir}}"))
+{{.NetworkRules}}

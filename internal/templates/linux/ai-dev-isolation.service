@@ -1,0 +1,13 @@
+[Unit]
+Description=sandboxctl AI UID egress restrictions
+After=network-pre.target nftables.service
+Wants=network-pre.target
+Before=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f {{.NFTFile}}
+
+[Install]
+WantedBy=sysinit.target
