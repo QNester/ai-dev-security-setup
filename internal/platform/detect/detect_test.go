@@ -82,3 +82,20 @@ func TestRejectInvalidBackend(t *testing.T) {
 		t.Fatal("expected backend error")
 	}
 }
+
+func TestLinuxDoesNotReportVMProviders(t *testing.T) {
+	report, err := fakeDetector("linux").Inspect("auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[string]bool)
+	for _, check := range report.Checks {
+		if check.Name == "lima" || check.Name == "UTM" {
+			t.Fatalf("unexpected Linux VM check: %+v", check)
+		}
+		if seen[check.Name] {
+			t.Fatalf("duplicate check name %q", check.Name)
+		}
+		seen[check.Name] = true
+	}
+}

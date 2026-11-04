@@ -28,11 +28,13 @@ const (
 )
 
 type App struct {
-	Stdout   io.Writer
-	Stderr   io.Writer
-	Getenv   func(string) string
-	Platform string
-	Arch     string
+	Stdout     io.Writer
+	Stderr     io.Writer
+	Getenv     func(string) string
+	Platform   string
+	Arch       string
+	Detector   *detect.Detector
+	jsonErrors bool
 }
 
 type commonFlags struct {
@@ -54,6 +56,12 @@ func New(stdout, stderr io.Writer) *App {
 }
 
 func (a *App) Run(ctx context.Context, argv0 string, args []string) int {
+	a.jsonErrors = false
+	for _, arg := range args {
+		if arg == "--json" {
+			a.jsonErrors = true
+		}
+	}
 	args = dispatchSymlink(filepath.Base(argv0), args)
 	if len(args) == 0 {
 		a.printUsage()
@@ -120,11 +128,14 @@ func (a *App) runDoctor(args []string) error {
 		return usageError(errors.New("doctor takes no positional arguments"))
 	}
 	detector := detect.NewDetector()
+	if a.Detector != nil {
+		detector = *a.Detector
+	}
 	detector.GOOS = a.Platform
 	detector.GOARCH = a.Arch
 	report, err := detector.Inspect(common.backend)
 	if err != nil {
-		return err
+		return usageError(err)
 	}
 	if common.json {
 		if err := writeJSON(a.Stdout, report); err != nil {
@@ -189,11 +200,11 @@ func (a *App) runInstall(ctx context.Context, args []string) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	_, err = plan.Execute(ctx, plan.Install(cfg), common.dryRun)
-	if err != nil {
+	value := plan.Install(cfg)
+	if _, err := plan.Execute(ctx, value, common.dryRun); err != nil {
 		return err
 	}
-	return a.printPlan(plan.Install(cfg), common)
+	return a.printPlan(value, common)
 }
 
 func (a *App) runUpdate(ctx context.Context, args []string) error {
@@ -214,10 +225,16 @@ func (a *App) runStatePlan(ctx context.Context, operation string, args []string)
 	if fs.NArg() != 0 {
 		return usageError(fmt.Errorf("%s takes no positional arguments", operation))
 	}
-	store := state.Store{Path: a.statePath(common)}
+	store, err := a.stateStore(common)
+	if err != nil {
+		return err
+	}
 	st, err := store.Load()
 	if err != nil {
 		return fmt.Errorf("load state for %s: %w", operation, err)
+	}
+	if st.Platform != a.Platform {
+		return fmt.Errorf("state platform %q does not match current platform %q", st.Platform, a.Platform)
 	}
 	var value plan.Plan
 	if operation == "update" {
@@ -241,7 +258,11 @@ func (a *App) runStatus(args []string) error {
 	if fs.NArg() != 0 {
 		return usageError(errors.New("status takes no positional arguments"))
 	}
-	st, err := (state.Store{Path: a.statePath(common)}).Load()
+	store, err := a.stateStore(common)
+	if err != nil {
+		return err
+	}
+	st, err := store.Load()
 	if errors.Is(err, os.ErrNotExist) {
 		if common.json {
 			return writeJSON(a.Stdout, map[string]bool{"installed": false})
@@ -251,6 +272,9 @@ func (a *App) runStatus(args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if st.Platform != a.Platform {
+		return fmt.Errorf("state platform %q does not match current platform %q", st.Platform, a.Platform)
 	}
 	if common.json {
 		return writeJSON(a.Stdout, map[string]any{"installed": true, "state": st})
@@ -342,6 +366,17 @@ func (a *App) statePath(common commonFlags) string {
 	return "/var/lib/ai-sandbox/state.json"
 }
 
+func (a *App) stateStore(common commonFlags) (state.Store, error) {
+	if common.statePath == "" && common.configPath != "" {
+		cfg, err := config.Load(common.configPath)
+		if err != nil {
+			return state.Store{}, fmt.Errorf("load config for state path: %w", err)
+		}
+		return state.Store{Path: cfg.StatePath}, nil
+	}
+	return state.Store{Path: a.statePath(common)}, nil
+}
+
 func (a *App) printPlan(value plan.Plan, common commonFlags) error {
 	result := plan.Result{Operation: value.Operation, DryRun: common.dryRun}
 	for _, action := range value.Actions {
@@ -400,6 +435,13 @@ func usageError(err error) error {
 }
 
 func (a *App) fail(code int, err error) int {
+	if a.jsonErrors {
+		if jsonErr := writeJSON(a.Stderr, map[string]any{
+			"error": err.Error(), "exit_code": code,
+		}); jsonErr == nil {
+			return code
+		}
+	}
 	fmt.Fprintf(a.Stderr, "sandboxctl: %v\n", err)
 	return code
 }

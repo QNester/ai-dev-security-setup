@@ -116,10 +116,10 @@ func (d Detector) Inspect(backend string) (Report, error) {
 		d.inspectLinux(&report)
 	case "darwin":
 		d.inspectDarwin(&report)
+		d.inspectVM(&report)
 	default:
 		report.add(Fail, "operating system", "only Linux and macOS are supported")
 	}
-	d.inspectVM(&report)
 	return report, nil
 }
 
@@ -127,9 +127,9 @@ func (d Detector) inspectLinux(report *Report) {
 	report.add(Pass, "operating system", "Linux")
 	d.commandCheck(report, "systemctl", true, "systemd")
 	if _, err := d.Stat("/run/systemd/system"); err != nil {
-		report.add(Fail, "systemd", "/run/systemd/system is unavailable")
+		report.add(Fail, "systemd runtime", "/run/systemd/system is unavailable")
 	} else {
-		report.add(Pass, "systemd", "running systemd instance detected")
+		report.add(Pass, "systemd runtime", "running systemd instance detected")
 	}
 	d.commandCheck(report, "bwrap", true, "bubblewrap")
 	d.inspectUserNamespaces(report)
