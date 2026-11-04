@@ -4,11 +4,14 @@
 Pi, and OpenCode on Linux and macOS. It is the successor to the Bash reference
 installer in this repository; the Go binary has no Bash or Python runtime.
 
-> **Phase 2 in progress:** the Phase 1 base is hardened, and the Linux
-> Bubblewrap adapter now builds sandbox argv and has a real read-only execution
-> test. No system-mutating backend is active. For `install`, `update`, and
-> `uninstall`, only dry-run planning succeeds; without `--dry-run` they return
-> exit code 3 before changing the system. `enter` and `review` remain unavailable.
+> **Phase 2 (Linux):** `install`, `update`, and `uninstall` now perform real
+> system changes on Linux behind `--yes` and a root check. The lifecycle covers
+> the dedicated account, shared ACLs and bind alias, sealed CLI runtime,
+> UID-scoped nftables policy, systemd units, and root-owned launcher symlinks.
+> `enter` runs a selected CLI inside Bubblewrap. `review` remains Phase 3 and
+> both macOS backends remain later phases. The Linux lifecycle still needs
+> on-host integration testing on Ubuntu 22.04 and 24.04 before claiming full
+> parity with the reference installer.
 
 ## Target model
 
@@ -61,10 +64,10 @@ JSON; without it, defaults are derived from the owner account and platform.
 For `status`, `update`, and `uninstall`, an explicit `--state` wins; otherwise
 the state path comes from `--config`, then from the platform default.
 
-`--json` also makes errors structured on stderr. Currently `--yes` and
-`--verbose` are accepted for interface compatibility but do not alter behavior;
-confirmation and verbose execution will be wired to real mutating actions before
-those actions are enabled.
+`--json` also makes errors structured on stderr. Mutating `install`, `update`,
+and `uninstall` require root and `--yes`; without `--yes` the command exits with
+a usage error. `--verbose` is accepted but does not yet add progress detail.
+`--dry-run` never invokes backend code.
 
 Doctor reports OS/architecture, privileges, init system, Bubblewrap and user
 namespaces, nftables, ACL tooling, Seatbelt's deprecated status, and Lima/UTM on
@@ -80,8 +83,13 @@ sandboxctl install --cli claude,opencode --backend native --dry-run \
 ```
 
 Dry-run does not create users, state, directories, services, firewall rules,
-mounts, ACLs, launchers, or runtime files. A non-dry-run invocation exits before
-the first action while mutating plans remain disabled.
+mounts, ACLs, launchers, or runtime files. A non-dry-run invocation requires
+root and `--yes`; on Linux it applies the lifecycle, verifies each stage, and
+rolls back if verification fails.
+
+Re-running `install` is idempotent for the same account, home, shared-tree, and
+runtime paths. Run `uninstall` before changing those paths so the old ACLs,
+bind alias, services, and runtime are removed from saved state.
 
 ## Development
 
@@ -99,10 +107,11 @@ SANDBOXCTL_INTEGRATION=1 go test -tags=integration \
   ./tests/integration/linux -run TestBubblewrapRunsTrue -v
 ```
 
-CI runs the portable checks and builds all four targets. Before lifecycle
-mutation is enabled, Phase 2 still needs Ubuntu 22.04/24.04 VM integration,
-account/ACL/runtime/network/service adapters, state journaling, launchers, and
-state-driven uninstall. Review and the macOS backends remain later phases.
+CI runs the portable checks and builds all four targets. The Linux adapters are
+unit-tested with injected command/file primitives, but the project still needs
+Ubuntu 22.04/24.04 VM integration runs to validate real `useradd`, `setfacl`,
+`mount`, `nft`, systemd, and vendor installers. Review and the macOS backends
+remain later phases.
 
 ## Legacy reference
 

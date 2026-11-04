@@ -56,7 +56,9 @@ The script is a reference, not part of the Go implementation or runtime.
 
 ## Phase boundaries
 
-Phase 1 implements only portable validation, state, planning, diagnostics, and
-contracts. It performs no account, package, mount, ACL, firewall, service,
-runtime, or launcher changes. Linux enforcement is Phase 2, review is Phase 3,
-and the macOS backends follow in Phases 4 and 5.
+Phase 1 implements portable validation, state, planning, diagnostics, and
+contracts. Phase 2 implements the Linux lifecycle: accounts, prerequisites,
+shared ACLs and bind alias, sealed runtime, UID nftables rules, systemd units,
+launchers, state-driven uninstall, and interactive sandbox entry. Ubuntu
+22.04/24.04 on-host verification remains required before claiming parity.
+Review is Phase 3, and the macOS backends follow in Phases 4 and 5.

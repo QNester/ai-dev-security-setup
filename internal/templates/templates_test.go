@@ -9,6 +9,7 @@ import (
 var templateFiles = []string{
 	"linux/ai-dev-isolation.service",
 	"linux/ai-dev-isolation.nft",
+	"linux/nftables-dropin.conf",
 	"linux/ai-dev-bwrap.apparmor4",
 	"darwin/ai-sandbox.plist",
 	"darwin/ai-sandbox.sb",
@@ -25,7 +26,7 @@ func TestTemplatesAreEmbedded(t *testing.T) {
 
 func TestTemplatesRender(t *testing.T) {
 	values := map[string]any{
-		"NFTFile": "/etc/nftables/ai-dev-isolation.nft", "AIUID": 999,
+		"NFTFile": "/etc/nftables/ai-dev-isolation.nft", "NFTPath": "/usr/sbin/nft", "AIUID": 999,
 		"IPv4Exceptions": "", "IPv6Exceptions": "", "Tool": "claude",
 		"Program": "/opt/ai-tools/bin/claude", "AIHome": "/home/ai-dev",
 		"TmpRoot": "/var/lib/ai-sandbox/tmp", "SharedDir": "/home/alice/Developer",

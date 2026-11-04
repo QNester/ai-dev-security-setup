@@ -10,53 +10,34 @@ import (
 
 	"github.com/QNester/ai-dev-security-setup/internal/config"
 	"github.com/QNester/ai-dev-security-setup/internal/fsx"
+	"github.com/QNester/ai-dev-security-setup/internal/platform/base"
 )
 
 const Version = 1
 
 type State struct {
-	Version  int           `json:"version"`
-	Platform string        `json:"platform"`
-	Backend  string        `json:"backend"`
-	Config   config.Config `json:"config"`
-	Created  Created       `json:"created"`
-	Shared   Shared        `json:"shared"`
-	Services []Service     `json:"services"`
-	Firewall *Firewall     `json:"firewall,omitempty"`
-	Runtime  Runtime       `json:"runtime"`
-	Backups  []Backup      `json:"backups"`
+	Version   int           `json:"version"`
+	Platform  string        `json:"platform"`
+	Backend   string        `json:"backend"`
+	Config    config.Config `json:"config"`
+	Created   Created       `json:"created"`
+	Shared    Shared        `json:"shared"`
+	Services  []Service     `json:"services"`
+	Firewall  *Firewall     `json:"firewall,omitempty"`
+	Runtime   Runtime       `json:"runtime"`
+	Launchers []Launcher    `json:"launchers,omitempty"`
+	Mounts    []Mount       `json:"mounts,omitempty"`
+	Backups   []Backup      `json:"backups"`
 }
 
-type Created struct {
-	User  string `json:"user"`
-	Group string `json:"group"`
-}
-
-type Shared struct {
-	Path  string `json:"path"`
-	ACL   string `json:"acl"`
-	Alias string `json:"alias"`
-}
-
-type Service struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-}
-
-type Firewall struct {
-	Type  string `json:"type"`
-	Table string `json:"table"`
-}
-
-type Runtime struct {
-	Path string   `json:"path"`
-	CLIs []string `json:"clis"`
-}
-
-type Backup struct {
-	Source string `json:"source"`
-	Path   string `json:"path"`
-}
+type Created = base.Created
+type Shared = base.Shared
+type Service = base.Service
+type Firewall = base.Firewall
+type Runtime = base.Runtime
+type Launcher = base.Launcher
+type Mount = base.Mount
+type Backup = base.Backup
 
 type Store struct {
 	Path string

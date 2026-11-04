@@ -31,5 +31,11 @@ func (c Config) ValidateSystem(platform string) error {
 	if c.AIHome != aiHome || !strings.HasPrefix(c.OwnerHome, ownerRoot) || c.TmpRoot != tmpRoot {
 		return errors.New("AI home, owner home, or tmp root does not match platform policy")
 	}
+	if platform == "linux" && !strings.HasPrefix(c.SharedSource, "/srv/") {
+		return errors.New("linux shared alias must be under /srv")
+	}
+	if platform == "darwin" && !strings.HasPrefix(c.SharedSource, "/Users/Shared/") {
+		return errors.New("macOS shared alias must be under /Users/Shared")
+	}
 	return nil
 }

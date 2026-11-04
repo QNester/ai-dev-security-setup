@@ -13,6 +13,36 @@
 6. Embed declarative templates and test shared contracts. Real isolation,
    uninstall, and review are deliberately left to their respective phases.
 
+## Phase 2 Linux lifecycle
+
+The Linux backend implements the portable backend contracts rather than a
+separate orchestrator:
+
+1. `Host` installs missing prerequisites, loads the targeted AppArmor profile
+   on restricted Ubuntu kernels, verifies user namespaces, and refuses to
+   proceed while AI processes are running.
+2. `Users` creates the locked account and dedicated groups, the AI home, the
+   temporary root, and the owner-side SSH deploy key.
+3. `ACL` denies the AI account at the owner's home before a vendor installer
+   runs, then grants the shared tree, installs default ACLs, and creates the
+   `nosuid,nodev` bind alias with an `/etc/fstab` entry.
+4. `Runtime` downloads trusted vendor installers as the AI account with a clean
+   environment, verifies the expected binaries, rejects special files,
+   privilege bits, file capabilities, and writable symlink targets, copies the
+   payload into a fresh root-owned tree, and activates stable `bin/` symlinks.
+5. `Network` renders `nftables` rules from validated spec data. `Services`
+   installs the unit and nftables drop-in. `Launchers` copies the running
+   `sandboxctl` binary to `/usr/local/libexec` and installs symlink launchers.
+6. The plan writes state after applying resources and verifies every stage
+   before reporting success. A verification failure restores or removes state
+   as part of rollback.
+
+`enter` loads state as root, maps the requested start directory to the shared
+tree, builds a `base.Spec`, and replaces itself with `runuser -u <ai> --
+bwrap`. The inner Bash entrypoint sources the AI-owned secrets file and executes
+the selected CLI, so secrets never become Bubblewrap arguments. `review` keeps
+its future descriptor-based path.
+
 ## Repository tree
 
 ```text
@@ -24,11 +54,11 @@ internal/plan/               install/update/uninstall plans and execution
 internal/runner/             context-aware argv/env subprocess execution
 internal/fsx/                atomic writes and no-follow regular-file opens
 internal/core/
-  users/                     portable account policy
-  shared/                    portable shared-tree policy
-  runtime/                   portable runtime install/sealing policy
-  review/                    portable review policy
-  services/                  portable service policy
+  users/                     account and group policy
+  shared/                    ACL, alias, and start-directory policy
+  runtime/                   CLI candidates, installer URLs, sandbox environment
+  review/                    portable review policy (Phase 3)
+  services/                  systemd, nftables, and launcher paths
 internal/platform/
   detect/                    OS, architecture, and capability reporting
   base/                      backend interfaces and portable Spec
@@ -74,9 +104,10 @@ with `context.WithoutCancel`, so caller cancellation does not abort cleanup.
 Dry-run only materializes names and never invokes apply, rollback, or
 verification.
 
-The current plans describe the Phase 2 lifecycle but intentionally have no
-system-mutating implementation. This makes the CLI end-to-end behavior testable
-without pretending that installation succeeded.
+The install plan now executes the Linux lifecycle. Dry-run still only
+materializes names and never calls a backend. On a failed apply or verification,
+rollback restores the prior sealed runtime, removes generated services,
+firewall rules, launchers, ACLs, and aliases, and restores or removes state.
 
 ## State and uninstall
 
@@ -102,8 +133,9 @@ representation in the state schema.
 
 ## Launcher dispatch
 
-The final installation will place one root-owned binary at
+The Linux installation places one root-owned binary at
 `/usr/local/libexec/sandboxctl`. `claude-secure`, `kimi-secure`, `pi-secure`,
-`opencode-secure`, and `ai-review-file` are symlinks to it. The existing argv0
-dispatch implements this routing; actual sandbox entry is not yet implemented.
-There is no setuid and no generated shell wrapper.
+and `opencode-secure` are symlinks to it. argv0 dispatch selects `enter`; the
+launcher first re-executes through `sudo` for the state read, then drops to the
+AI account with `runuser` before Bubblewrap. `ai-review-file` and its root
+dispatch remain Phase 3. There is no setuid and no generated shell launcher.

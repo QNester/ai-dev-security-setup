@@ -1,3 +1,7 @@
+#!/usr/sbin/nft -f
+# Managed by sandboxctl. "destroy" makes this file safe to apply repeatedly.
+destroy table ip ai_dev_isolation
+destroy table ip6 ai_dev_isolation
 table ip ai_dev_isolation {
     chain output {
         type filter hook output priority filter; policy accept;

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -77,6 +78,18 @@ func (s Sandbox) Wrap(ctx context.Context, spec base.Spec) ([]string, error) {
 		}
 		args = append(args, "--dir", filepath.Dir(path), "--bind", path, path)
 	}
+	for _, mount := range spec.BindMounts {
+		if targetIsDirectory(mount) {
+			args = append(args, "--dir", filepath.Dir(mount.Target), "--dir", mount.Target)
+		} else {
+			args = append(args, "--dir", filepath.Dir(mount.Target))
+		}
+		flag := "--bind"
+		if mount.ReadOnly {
+			flag = "--ro-bind"
+		}
+		args = append(args, flag, mount.Source, mount.Target)
+	}
 	keys := make([]string, 0, len(spec.Env))
 	for key, value := range spec.Env {
 		if !validEnvName(key) || strings.ContainsRune(value, '\x00') {
@@ -112,6 +125,16 @@ func (s Sandbox) commandRunner() runner.Runner {
 	return runner.OSRunner{}
 }
 
+func targetIsDirectory(mount base.BindMount) bool {
+	if info, err := os.Stat(mount.Target); err == nil {
+		return info.IsDir()
+	}
+	if info, err := os.Stat(mount.Source); err == nil {
+		return info.IsDir()
+	}
+	return false
+}
+
 func sortedUnique(paths []string) []string {
 	seen := make(map[string]bool, len(paths))
 	result := make([]string, 0, len(paths))
@@ -130,7 +153,30 @@ func validateMountConflicts(spec base.Spec) error {
 	for _, path := range spec.ReadOnlyPaths {
 		readOnly[path] = true
 	}
+	writable := make(map[string]bool, len(spec.WritablePaths)+len(spec.BindMounts))
 	for _, path := range spec.WritablePaths {
+		writable[path] = true
+	}
+	for _, mount := range spec.BindMounts {
+		if mount.Target == "" || mount.Source == "" {
+			return fmt.Errorf("bind mounts require a source and target")
+		}
+		if mount.Target == spec.Home || mount.Target == spec.Tmp {
+			return fmt.Errorf("bind mount target is already managed: %s", mount.Target)
+		}
+		if mount.ReadOnly {
+			if writable[mount.Target] {
+				return fmt.Errorf("bind target is already writable: %s", mount.Target)
+			}
+			readOnly[mount.Target] = true
+			continue
+		}
+		if readOnly[mount.Target] {
+			return fmt.Errorf("path is both read-only and writable: %s", mount.Target)
+		}
+		writable[mount.Target] = true
+	}
+	for path := range writable {
 		if readOnly[path] {
 			return fmt.Errorf("path is both read-only and writable: %s", path)
 		}
@@ -151,38 +197,25 @@ func validEnvName(name string) bool {
 	return true
 }
 
-type Users struct{}
-
-func (Users) EnsureUser(context.Context, base.Config) error  { return base.ErrNotImplemented }
-func (Users) EnsureGroup(context.Context, base.Config) error { return base.ErrNotImplemented }
-func (Users) DeleteUser(context.Context, base.Config) error  { return base.ErrNotImplemented }
-
-type ACL struct{}
-
-func (ACL) GrantShared(context.Context, base.Config) error  { return base.ErrNotImplemented }
-func (ACL) RevokeShared(context.Context, base.Config) error { return base.ErrNotImplemented }
-func (ACL) Verify(context.Context, base.Config) error       { return base.ErrNotImplemented }
-
-type Network struct{}
-
-func (Network) Apply(context.Context, base.Config) error  { return base.ErrNotImplemented }
-func (Network) Verify(context.Context, base.Config) error { return base.ErrNotImplemented }
-func (Network) Remove(context.Context, base.Config) error { return base.ErrNotImplemented }
-
-type Services struct{}
-
-func (Services) Install(context.Context, base.Config) error { return base.ErrNotImplemented }
-func (Services) Remove(context.Context, base.Config) error  { return base.ErrNotImplemented }
-
 type Review struct{}
 
 func (Review) Prepare(context.Context, string) (base.Spec, func(), error) {
 	return base.Spec{}, func() {}, base.ErrNotImplemented
 }
 
-func Backends() base.Backends {
+func Backends() base.Backends { return BackendsWithDeps(Deps{}) }
+
+// BackendsWithDeps keeps the adapter construction explicit for tests.
+func BackendsWithDeps(deps Deps) base.Backends {
 	return base.Backends{
-		Users: Users{}, ACL: ACL{}, Sandbox: Sandbox{}, Network: Network{},
-		Services: Services{}, Review: Review{},
+		Host:      Host{Deps: deps},
+		Users:     Users{Deps: deps},
+		ACL:       ACL{Deps: deps},
+		Runtime:   Runtime{Deps: deps},
+		Sandbox:   Sandbox{CommandRunner: deps.Runner},
+		Network:   Network{Deps: deps},
+		Services:  Services{Deps: deps},
+		Launchers: Launchers{Deps: deps},
+		Review:    Review{},
 	}
 }

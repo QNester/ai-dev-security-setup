@@ -60,7 +60,8 @@ func TestInstallDryRun(t *testing.T) {
 	}
 }
 
-func TestInstallApplyIsUnavailable(t *testing.T) {
+func writeSystemConfig(t *testing.T) string {
+	t.Helper()
 	configPath, _ := writeTestConfig(t)
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -78,11 +79,28 @@ func TestInstallApplyIsUnavailable(t *testing.T) {
 	if err := os.WriteFile(configPath, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	return configPath
+}
+
+func TestInstallApplyRequiresRoot(t *testing.T) {
+	configPath := writeSystemConfig(t)
 	app, _, stderr := testApp()
 	code := app.Run(context.Background(), "sandboxctl", []string{
 		"install", "--config", configPath, "--yes",
 	})
-	if code != ExitUnavailable || !strings.Contains(stderr.String(), "mutation is disabled") {
+	if code != ExitFailure || !strings.Contains(stderr.String(), "requires root") {
+		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	}
+}
+
+func TestInstallApplyRequiresYes(t *testing.T) {
+	configPath := writeSystemConfig(t)
+	app, _, stderr := testApp()
+	app.EUID = 0
+	code := app.Run(context.Background(), "sandboxctl", []string{
+		"install", "--config", configPath,
+	})
+	if code != ExitUsage || !strings.Contains(stderr.String(), "--yes") {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
 	}
 }
@@ -100,7 +118,7 @@ func TestStatusMissing(t *testing.T) {
 
 func TestLauncherDispatch(t *testing.T) {
 	got := dispatchSymlink("claude-secure", []string{"--help"})
-	want := []string{"enter", "--tool", "claude", "--help"}
+	want := []string{"enter", "--tool", "claude", "--", "--help"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got=%v want=%v", got, want)
 	}

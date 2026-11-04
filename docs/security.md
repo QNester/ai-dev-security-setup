@@ -23,10 +23,17 @@ The implementation must preserve these invariants as backends are activated:
 
 ## Current guarantees
 
-Phase 2 has started, but lifecycle mutation is still disabled. The Linux
-Bubblewrap adapter has a real read-only execution probe; this is not yet full
-sandbox parity. `install`, `update`, and `uninstall` without `--dry-run` return
-exit code 3 before changing the system. `enter` and `review` are unavailable.
+The Linux Phase 2 lifecycle now mutates the host. `install` and `update` create
+one locked account, deny the owner home, grant the shared tree, install and seal
+the runtime, apply UID-scoped nftables rules, enable systemd units, and install
+root-owned symlink launchers. `uninstall` follows the saved state rather than
+current flags. Every mutating command requires root and `--yes`.
+
+`enter` builds a Bubblewrap spec, runs it as the AI account, and sources the
+AI-owned secrets file inside the sandbox so credentials do not appear in the
+Bubblewrap argument list. `review` remains Phase 3. The Linux path is not yet
+verified on an Ubuntu 22.04/24.04 VM, so parity with the reference installer is
+not claimed.
 
 The atomic state writer rejects symlinks throughout the destination chain,
 group/other-writable and setgid components, and unexpected owners. Directory
@@ -49,5 +56,7 @@ Linux UID filtering is best-effort because it shares the host kernel and network
 namespace. Native macOS relies on deprecated Seatbelt behavior and cannot claim
 Linux parity. Use the VM backend and controlled proxy for strict isolation.
 
-No system-mutating backend is implemented in Phase 1, so there is not yet any
-runtime protection or uninstall capability to validate on a real host.
+The Linux implementation has not yet been exercised end-to-end on a clean
+Ubuntu 22.04/24.04 host. Vendor installers, ACL behavior on the owner's
+filesystem, systemd ordering, and AppArmor profile loading remain integration
+risks until those runs are recorded.

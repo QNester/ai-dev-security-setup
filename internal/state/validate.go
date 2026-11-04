@@ -25,6 +25,8 @@ func (s State) Validate() error {
 	problems = append(problems, s.validateShared()...)
 	problems = append(problems, s.validateRuntime()...)
 	problems = append(problems, s.validateServices()...)
+	problems = append(problems, s.validateLaunchers()...)
+	problems = append(problems, s.validateMounts()...)
 	problems = append(problems, s.validateBackups()...)
 	problems = append(problems, s.validatePlatformPaths()...)
 	if s.Created.User != "" && s.Created.User != s.Config.AIUser {
@@ -132,6 +134,50 @@ func (s State) validateServices() []error {
 		seen[service.Name] = true
 		if err := config.ValidatePath(service.Path); err != nil {
 			problems = append(problems, fmt.Errorf("service %s path: %w", service.Name, err))
+		}
+	}
+	return problems
+}
+
+func (s State) validateLaunchers() []error {
+	var problems []error
+	seen := make(map[string]bool, len(s.Launchers))
+	for _, launcher := range s.Launchers {
+		if !resourceNamePattern.MatchString(launcher.Name) {
+			problems = append(problems, fmt.Errorf("invalid launcher name %q", launcher.Name))
+		}
+		if seen[launcher.Name] {
+			problems = append(problems, fmt.Errorf("duplicate launcher %q", launcher.Name))
+		}
+		seen[launcher.Name] = true
+		if err := config.ValidatePath(launcher.Path); err != nil {
+			problems = append(problems, fmt.Errorf("launcher %s path: %w", launcher.Name, err))
+		}
+		if err := config.ValidatePath(launcher.Target); err != nil {
+			problems = append(problems, fmt.Errorf("launcher %s target: %w", launcher.Name, err))
+		}
+	}
+	return problems
+}
+
+func (s State) validateMounts() []error {
+	var problems []error
+	seen := make(map[string]bool, len(s.Mounts))
+	for _, mount := range s.Mounts {
+		if err := config.ValidatePath(mount.Source); err != nil {
+			problems = append(problems, fmt.Errorf("mount source: %w", err))
+		}
+		if err := config.ValidatePath(mount.Target); err != nil {
+			problems = append(problems, fmt.Errorf("mount target: %w", err))
+		}
+		if seen[mount.Target] {
+			problems = append(problems, fmt.Errorf("duplicate mount target %q", mount.Target))
+		}
+		seen[mount.Target] = true
+		for _, option := range mount.Options {
+			if !resourceNamePattern.MatchString(option) {
+				problems = append(problems, fmt.Errorf("invalid mount option %q", option))
+			}
 		}
 	}
 	return problems

@@ -9,15 +9,22 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/QNester/ai-dev-security-setup/internal/config"
+	coreruntime "github.com/QNester/ai-dev-security-setup/internal/core/runtime"
+	"github.com/QNester/ai-dev-security-setup/internal/core/shared"
 	"github.com/QNester/ai-dev-security-setup/internal/plan"
+	"github.com/QNester/ai-dev-security-setup/internal/platform/base"
+	"github.com/QNester/ai-dev-security-setup/internal/platform/darwin"
 	"github.com/QNester/ai-dev-security-setup/internal/platform/detect"
+	"github.com/QNester/ai-dev-security-setup/internal/platform/linux"
 	"github.com/QNester/ai-dev-security-setup/internal/state"
 )
 
@@ -31,9 +38,11 @@ const (
 type App struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
+	Stdin      io.Reader
 	Getenv     func(string) string
 	Platform   string
 	Arch       string
+	EUID       int
 	Detector   *detect.Detector
 	jsonErrors bool
 }
@@ -51,8 +60,8 @@ type commonFlags struct {
 
 func New(stdout, stderr io.Writer) *App {
 	return &App{
-		Stdout: stdout, Stderr: stderr, Getenv: os.Getenv,
-		Platform: runtime.GOOS, Arch: runtime.GOARCH,
+		Stdout: stdout, Stderr: stderr, Stdin: os.Stdin, Getenv: os.Getenv,
+		Platform: runtime.GOOS, Arch: runtime.GOARCH, EUID: os.Geteuid(),
 	}
 }
 
@@ -112,7 +121,7 @@ func dispatchSymlink(name string, args []string) []string {
 		tool := strings.TrimSuffix(name, "-secure")
 		switch tool {
 		case "claude", "kimi", "pi", "opencode":
-			return append([]string{"enter", "--tool", tool}, args...)
+			return append([]string{"enter", "--tool", tool, "--"}, args...)
 		}
 	}
 	if name == "ai-review-file" {
@@ -211,7 +220,19 @@ func (a *App) runInstall(ctx context.Context, args []string) error {
 	} else if err := cfg.ValidateSystem(a.Platform); err != nil {
 		return err
 	}
-	value := plan.Install(cfg)
+	if !common.dryRun {
+		if a.EUID != 0 {
+			return errors.New("installing requires root; run with sudo")
+		}
+		if !common.yes {
+			return usageError(errors.New("refusing to change the system without --yes"))
+		}
+	}
+	backends, err := a.backends()
+	if err != nil {
+		return err
+	}
+	value := plan.Install(cfg, plan.Deps{Backends: backends, Store: state.Store{Path: cfg.StatePath}})
 	if _, err := plan.Execute(ctx, value, common.dryRun); err != nil {
 		return err
 	}
@@ -247,11 +268,24 @@ func (a *App) runStatePlan(ctx context.Context, operation string, args []string)
 	if st.Platform != a.Platform {
 		return fmt.Errorf("state platform %q does not match current platform %q", st.Platform, a.Platform)
 	}
+	if !common.dryRun {
+		if a.EUID != 0 {
+			return fmt.Errorf("%s requires root; run with sudo", operation)
+		}
+		if !common.yes {
+			return usageError(fmt.Errorf("refusing to change the system without --yes"))
+		}
+	}
+	backends, err := a.backends()
+	if err != nil {
+		return err
+	}
+	deps := plan.Deps{Backends: backends, Store: store}
 	var value plan.Plan
 	if operation == "update" {
-		value = plan.Update(st)
+		value = plan.Update(st, deps)
 	} else {
-		value = plan.Uninstall(st)
+		value = plan.Uninstall(st, deps)
 	}
 	if _, err := plan.Execute(ctx, value, common.dryRun); err != nil {
 		return err
@@ -318,16 +352,214 @@ func (a *App) runEnter(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return usageError(err)
 	}
-	if fs.NArg() != 0 {
-		return usageError(errors.New("enter takes no positional arguments"))
+	tools, err := config.ParseCLIList(tool)
+	if err != nil || len(tools) != 1 {
+		return usageError(errors.New("enter requires exactly one --tool"))
 	}
-	if _, err := config.ParseCLIList(tool); err != nil {
-		return usageError(err)
-	}
+	tool = tools[0]
 	if startDir != "" && !filepath.IsAbs(startDir) {
 		return usageError(errors.New("start-dir must be absolute"))
 	}
-	return fmt.Errorf("sandbox entry is scheduled for Phase 2: %w", plan.ErrNotImplemented)
+	if a.Platform != "linux" {
+		return fmt.Errorf("sandbox entry is not available on %s: %w", a.Platform, plan.ErrNotImplemented)
+	}
+	if a.EUID != 0 {
+		return a.reexecEnterWithSudo(args)
+	}
+	store, err := a.stateStore(common)
+	if err != nil {
+		return err
+	}
+	st, err := store.Load()
+	if err != nil {
+		return fmt.Errorf("load state for enter: %w", err)
+	}
+	if st.Platform != a.Platform {
+		return fmt.Errorf("state platform %q does not match current platform %q", st.Platform, a.Platform)
+	}
+	if !containsCLI(st.Runtime.CLIs, tool) {
+		return fmt.Errorf("%s is not installed", tool)
+	}
+	if startDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			if resolved, err := resolveStartDir(st.Config, wd); err == nil {
+				startDir = resolved
+			}
+		}
+	}
+	resolvedStart, err := resolveStartDir(st.Config, startDir)
+	if err != nil {
+		return err
+	}
+	spec, err := buildEnterSpec(st, tool, resolvedStart, fs.Args())
+	if err != nil {
+		return err
+	}
+	backends, err := a.backends()
+	if err != nil {
+		return err
+	}
+	argv, err := backends.Sandbox.Wrap(context.Background(), spec)
+	if err != nil {
+		return err
+	}
+	return execAsAI(st.Config.AIUser, argv)
+}
+
+func (a *App) reexecEnterWithSudo(args []string) error {
+	sudo, err := exec.LookPath("sudo")
+	if err != nil {
+		return errors.New("enter must be started through sudo or as root")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	argv := append([]string{sudo, self, "enter"}, args...)
+	return syscall.Exec(sudo, argv, os.Environ())
+}
+
+func execAsAI(user string, argv []string) error {
+	if len(argv) == 0 {
+		return errors.New("empty sandbox command")
+	}
+	dropper := ""
+	if path, err := exec.LookPath("runuser"); err == nil {
+		dropper = path
+	} else if path, err := exec.LookPath("sudo"); err == nil {
+		dropper = path
+	} else {
+		return errors.New("runuser or sudo is required to drop privileges")
+	}
+	args := []string{dropper}
+	if filepath.Base(dropper) == "runuser" {
+		args = append(args, "-u", user, "--")
+	} else {
+		args = append(args, "-u", user, "--")
+	}
+	args = append(args, argv...)
+	return syscall.Exec(dropper, args, os.Environ())
+}
+
+func buildEnterSpec(st state.State, tool, startDir string, args []string) (base.Spec, error) {
+	cfg := st.Config
+	program := filepath.Join(cfg.RuntimeRoot, "bin", tool)
+	if info, err := os.Stat(program); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return base.Spec{}, fmt.Errorf("missing executable: %s", program)
+	}
+	readOnly := []string{cfg.RuntimeRoot}
+	for _, path := range []string{
+		"/etc/passwd", "/etc/group", "/etc/nsswitch.conf", "/etc/hosts",
+		"/etc/host.conf", "/etc/gai.conf", "/etc/localtime", "/etc/ld.so.cache",
+		"/etc/os-release", "/etc/services", "/etc/protocols", "/etc/inputrc",
+		"/etc/machine-id", "/etc/ssl", "/etc/alternatives", "/etc/ca-certificates",
+	} {
+		if _, err := os.Lstat(path); err == nil {
+			readOnly = append(readOnly, path)
+		}
+	}
+	mounts := []base.BindMount{{
+		Source: cfg.SharedSource, Target: cfg.SharedDir, ReadOnly: false,
+	}}
+	if resolved, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil {
+		mounts = append(mounts, base.BindMount{
+			Source: resolved, Target: "/etc/resolv.conf", ReadOnly: true,
+		})
+	}
+	env := coreruntime.SandboxEnv(cfg)
+	if _, err := os.Stat(coreruntime.OpenCodeConfigPath(cfg)); err == nil {
+		env["OPENCODE_CONFIG"] = coreruntime.OpenCodeConfigPath(cfg)
+	}
+	argv := sandboxEntrypoint(cfg, program, args)
+	return base.Spec{
+		Argv:          argv,
+		Cwd:           startDir,
+		Env:           env,
+		ReadOnlyPaths: readOnly,
+		BindMounts:    mounts,
+		Home:          cfg.AIHome,
+		Tmp:           cfg.TmpRoot,
+		Network:       base.NetworkOpen,
+		ReviewFD:      -1,
+	}, nil
+}
+
+func sandboxEntrypoint(cfg config.Config, program string, args []string) []string {
+	shell := "/bin/bash"
+	if _, err := os.Stat(shell); err != nil {
+		shell = "/usr/bin/bash"
+	}
+	script := `load=$1
+secrets=$2
+shift 2
+if [[ $load == 1 && -f $secrets ]]; then
+    set -a
+    . "$secrets" || {
+        printf "Cannot load secrets file: %s\n" "$secrets" >&2
+        exit 1
+    }
+    set +a
+fi
+if [[ -z ${LITELLM_API_KEY:-} && -n ${LITTLE_LLM_API_KEY:-} ]]; then
+    LITELLM_API_KEY=$LITTLE_LLM_API_KEY
+    export LITELLM_API_KEY
+fi
+exec "$@"`
+	argv := []string{shell, "--noprofile", "--norc", "-c", script, "sandboxctl", "1", coreruntime.SecretsPath(cfg), program}
+	return append(argv, args...)
+}
+
+func resolveStartDir(cfg config.Config, raw string) (string, error) {
+	if raw == "" {
+		return cfg.SharedDir, nil
+	}
+	if !filepath.IsAbs(raw) || filepath.Clean(raw) != raw {
+		return "", errors.New("start-dir must be a clean absolute path")
+	}
+	resolved, err := filepath.EvalSymlinks(raw)
+	if err != nil {
+		return "", fmt.Errorf("resolve start-dir: %w", err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		return "", errors.New("start-dir must be a directory")
+	}
+	switch {
+	case shared.InsideShared(cfg, resolved):
+		rel, err := filepath.Rel(cfg.SharedDir, resolved)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(cfg.SharedDir, rel), nil
+	case resolved == cfg.SharedSource || strings.HasPrefix(resolved, cfg.SharedSource+string(filepath.Separator)):
+		rel, err := filepath.Rel(cfg.SharedSource, resolved)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(cfg.SharedDir, rel), nil
+	default:
+		return "", errors.New("start-dir must be inside the shared tree")
+	}
+}
+
+func containsCLI(clis []string, wanted string) bool {
+	for _, cli := range clis {
+		if cli == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) backends() (base.Backends, error) {
+	switch a.Platform {
+	case "linux":
+		return linux.BackendsWithDeps(linux.Deps{}), nil
+	case "darwin":
+		return darwin.Backends(), nil
+	default:
+		return base.Backends{}, fmt.Errorf("unsupported platform %q", a.Platform)
+	}
 }
 
 func (a *App) loadConfig(common commonFlags) (config.Config, error) {
@@ -463,12 +695,13 @@ func (a *App) printUsage() {
 Commands:
   doctor                 inspect host capabilities (read-only)
   install --cli LIST     plan or install selected coding CLIs
-  update                 update from saved state
+  update                 update from saved state (requires root + --yes)
   uninstall              remove integration recorded in saved state
   status                 show saved installation state
   review FILE            review one file (Phase 3)
-  enter --tool NAME      internal sandbox entry (Phase 2)
+  enter --tool NAME      internal Linux sandbox entry
 
+Mutating commands require root and --yes.
 Common options: --dry-run, --yes, --json, --verbose,
                 --backend native|vm|auto, --config FILE, --state FILE`)
 }

@@ -7,7 +7,10 @@ Before=network.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/sbin/nft -f {{.NFTFile}}
+ExecStart={{.NFTPath}} -f {{.NFTFile}}
+ExecStop=-{{.NFTPath}} delete table inet ai_dev_isolation
+ExecStop=-{{.NFTPath}} delete table ip ai_dev_isolation
+ExecStop=-{{.NFTPath}} delete table ip6 ai_dev_isolation
 
 [Install]
 WantedBy=sysinit.target

@@ -18,17 +18,40 @@ func (Sandbox) Wrap(_ context.Context, spec base.Spec) ([]string, error) {
 	return nil, base.ErrNotImplemented
 }
 
+type Host struct{}
+
+func (Host) Prepare(context.Context, base.Config) (bool, error) { return false, base.ErrNotImplemented }
+func (Host) Verify(context.Context, base.Config) error          { return base.ErrNotImplemented }
+func (Host) VerifyRemoved(context.Context, base.Config) error   { return base.ErrNotImplemented }
+func (Host) RemoveTemporary(context.Context, base.Config) error { return base.ErrNotImplemented }
+func (Host) Cleanup(context.Context, base.Config) error         { return base.ErrNotImplemented }
+
 type Users struct{}
 
-func (Users) EnsureUser(context.Context, base.Config) error  { return base.ErrNotImplemented }
-func (Users) EnsureGroup(context.Context, base.Config) error { return base.ErrNotImplemented }
+func (Users) EnsureUser(context.Context, base.Config) (bool, error) {
+	return false, base.ErrNotImplemented
+}
+func (Users) EnsureGroup(context.Context, base.Config) (bool, error) {
+	return false, base.ErrNotImplemented
+}
 func (Users) DeleteUser(context.Context, base.Config) error  { return base.ErrNotImplemented }
+func (Users) DeleteGroup(context.Context, base.Config) error { return base.ErrNotImplemented }
+func (Users) Verify(context.Context, base.Config) error      { return base.ErrNotImplemented }
 
 type ACL struct{}
 
-func (ACL) GrantShared(context.Context, base.Config) error  { return base.ErrNotImplemented }
-func (ACL) RevokeShared(context.Context, base.Config) error { return base.ErrNotImplemented }
-func (ACL) Verify(context.Context, base.Config) error       { return base.ErrNotImplemented }
+func (ACL) DenyOwner(context.Context, base.Config) error       { return base.ErrNotImplemented }
+func (ACL) RevokeOwnerDeny(context.Context, base.Config) error { return base.ErrNotImplemented }
+func (ACL) GrantShared(context.Context, base.Config) error     { return base.ErrNotImplemented }
+func (ACL) RevokeShared(context.Context, base.Config) error    { return base.ErrNotImplemented }
+func (ACL) Verify(context.Context, base.Config) error          { return base.ErrNotImplemented }
+
+type Runtime struct{}
+
+func (Runtime) Install(context.Context, base.Config) error  { return base.ErrNotImplemented }
+func (Runtime) Verify(context.Context, base.Config) error   { return base.ErrNotImplemented }
+func (Runtime) Remove(context.Context, base.Config) error   { return base.ErrNotImplemented }
+func (Runtime) Rollback(context.Context, base.Config) error { return base.ErrNotImplemented }
 
 type Network struct{}
 
@@ -39,7 +62,14 @@ func (Network) Remove(context.Context, base.Config) error { return base.ErrNotIm
 type Services struct{}
 
 func (Services) Install(context.Context, base.Config) error { return base.ErrNotImplemented }
+func (Services) Verify(context.Context, base.Config) error  { return base.ErrNotImplemented }
 func (Services) Remove(context.Context, base.Config) error  { return base.ErrNotImplemented }
+
+type Launchers struct{}
+
+func (Launchers) Install(context.Context, base.Config) error { return base.ErrNotImplemented }
+func (Launchers) Verify(context.Context, base.Config) error  { return base.ErrNotImplemented }
+func (Launchers) Remove(context.Context, base.Config) error  { return base.ErrNotImplemented }
 
 type Review struct{}
 
@@ -49,7 +79,8 @@ func (Review) Prepare(context.Context, string) (base.Spec, func(), error) {
 
 func Backends() base.Backends {
 	return base.Backends{
-		Users: Users{}, ACL: ACL{}, Sandbox: Sandbox{}, Network: Network{},
-		Services: Services{}, Review: Review{},
+		Host: Host{}, Users: Users{}, ACL: ACL{}, Runtime: Runtime{},
+		Sandbox: Sandbox{}, Network: Network{}, Services: Services{},
+		Launchers: Launchers{}, Review: Review{},
 	}
 }
