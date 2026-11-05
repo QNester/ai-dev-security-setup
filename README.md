@@ -81,8 +81,10 @@ Podman are intentionally not treated as automatic VM providers; they remain a
 Phase 5 option. `--fix` cannot be combined with `--json`; `--fix --dry-run`
 prints the macOS Homebrew command without running it.
 
-Common flags are `--dry-run`, `--yes`, `--json`, `--no-color`, `--verbose`,
-`--backend`, `--config`, and `--state`. Place them after the command. `--config`
+Common flags are `--dry-run`, `--yes`, `--json`, `--no-color`, `--skip-cli`,
+`--verbose`, `--backend`, `--config`, and `--state`. Place them after the
+command. `--skip-cli` verifies an existing sealed runtime instead of downloading
+vendors; it is intended for reconfiguration and the e2e fixture. `--config`
 loads strict JSON; without it, defaults are derived from the owner account and
 platform. For `status`, `update`, and `uninstall`, an explicit `--state` wins;
 otherwise the state path comes from `--config`, then from the platform default.
@@ -148,6 +150,16 @@ A real but non-mutating Linux Bubblewrap integration probe is available:
 ```bash
 SANDBOXCTL_INTEGRATION=1 go test -tags=integration \
   ./tests/integration/linux -run TestBubblewrapRunsTrue -v
+```
+
+The destructive end-to-end suite runs inside a disposable Ubuntu guest and is
+documented in [tests/e2e/README.md](tests/e2e/README.md):
+
+```bash
+export SANDBOXCTL_E2E=1
+go run ./tests/e2e/runner --provider hosted --arch amd64   # GitHub-hosted runner
+go run ./tests/e2e/runner --provider lima --arch arm64     # local macOS
+go run ./tests/e2e/runner --provider multipass             # local Linux
 ```
 
 CI runs the portable checks and builds all four targets. The Linux adapters are

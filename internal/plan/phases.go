@@ -16,10 +16,11 @@ import (
 
 // Deps supplies the selected platform backend and the state store.
 type Deps struct {
-	Backends base.Backends
-	Store    state.Store
-	Platform string
-	Backend  string
+	Backends    base.Backends
+	Store       state.Store
+	Platform    string
+	Backend     string
+	SkipRuntime bool
 }
 
 func Install(cfg config.Config, options ...Deps) Plan {
@@ -38,12 +39,16 @@ func dependency(options []Deps) Deps {
 }
 
 func installPlan(operation string, cfg config.Config, previous state.State, deps Deps) Plan {
+	runtimeStep := runtimeAction(cfg, deps.Backends.Runtime)
+	if deps.SkipRuntime {
+		runtimeStep = runtimeVerifyAction(cfg, deps.Backends.Runtime)
+	}
 	actions := []Action{
 		hostPrepareAction(cfg, deps.Backends.Host),
 		groupAction(cfg, deps.Backends.Users),
 		userAction(cfg, deps.Backends.Users),
 		denyOwnerAction(cfg, deps.Backends.ACL),
-		runtimeAction(cfg, deps.Backends.Runtime),
+		runtimeStep,
 		sharedAction(cfg, deps.Backends.ACL),
 		networkAction(cfg, deps.Backends.Network),
 		serviceAction(cfg, deps.Backends.Services),
@@ -149,6 +154,14 @@ func runtimeAction(cfg config.Config, backend base.RuntimeBackend) Action {
 		ApplyFunc:    func(ctx context.Context) error { return backend.Install(ctx, cfg) },
 		RollbackFunc: func(ctx context.Context) error { return backend.Rollback(ctx, cfg) },
 		VerifyFunc:   func(ctx context.Context) error { return backend.Verify(ctx, cfg) },
+	}
+}
+
+func runtimeVerifyAction(cfg config.Config, backend base.RuntimeBackend) Action {
+	return FuncAction{
+		Description: fmt.Sprintf("verify existing CLI runtime: %v", cfg.CLIs),
+		ApplyFunc:   func(ctx context.Context) error { return backend.Verify(ctx, cfg) },
+		VerifyFunc:  func(ctx context.Context) error { return backend.Verify(ctx, cfg) },
 	}
 }
 

@@ -58,6 +58,7 @@ type commonFlags struct {
 	yes        bool
 	json       bool
 	noColor    bool
+	skipCLI    bool
 	verbose    bool
 	backend    string
 	backendSet bool
@@ -298,7 +299,7 @@ func (a *App) runInstall(ctx context.Context, args []string) error {
 	}
 	value := plan.Install(cfg, plan.Deps{
 		Backends: backends, Store: state.Store{Path: cfg.StatePath},
-		Platform: a.Platform, Backend: resolvedBackend,
+		Platform: a.Platform, Backend: resolvedBackend, SkipRuntime: common.skipCLI,
 	})
 	if _, err := a.executePlan(ctx, value, common.dryRun); err != nil {
 		return err
@@ -347,7 +348,7 @@ func (a *App) runStatePlan(ctx context.Context, operation string, args []string)
 	if err != nil {
 		return err
 	}
-	deps := plan.Deps{Backends: backends, Store: store, Platform: st.Platform, Backend: st.Backend}
+	deps := plan.Deps{Backends: backends, Store: store, Platform: st.Platform, Backend: st.Backend, SkipRuntime: common.skipCLI}
 	var value plan.Plan
 	if operation == "update" {
 		value = plan.Update(st, deps)
@@ -873,6 +874,7 @@ func addCommonFlags(fs *flag.FlagSet, common *commonFlags) {
 	fs.BoolVar(&common.yes, "y", common.yes, "alias for --yes")
 	fs.BoolVar(&common.json, "json", common.json, "machine-readable JSON output")
 	fs.BoolVar(&common.noColor, "no-color", common.noColor, "disable ANSI colors")
+	fs.BoolVar(&common.skipCLI, "skip-cli", common.skipCLI, "keep the existing CLI runtime instead of downloading it")
 	fs.BoolVar(&common.verbose, "verbose", common.verbose, "enable verbose diagnostics")
 	fs.Func("backend", "native, vm, or auto", func(value string) error {
 		common.backend = value
@@ -991,6 +993,6 @@ Commands:
   enter --tool NAME      internal Linux sandbox entry
 
 Mutating commands require root and --yes.
-Common options: --dry-run, --yes, --json, --no-color, --verbose,
-                --backend native|vm|auto, --config FILE, --state FILE`)
+Common options: --dry-run, --yes, --json, --no-color, --skip-cli,
+                --verbose, --backend native|vm|auto, --config FILE, --state FILE`)
 }

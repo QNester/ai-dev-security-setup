@@ -148,6 +148,21 @@ func TestInstallPlanAppliesEverythingAndSavesState(t *testing.T) {
 	}
 }
 
+func TestSkipRuntimeVerifiesExistingTree(t *testing.T) {
+	cfg, deps, fake, _ := testDeps(t)
+	deps.SkipRuntime = true
+	if _, err := Execute(context.Background(), Install(cfg, deps), false); err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(fake.events, ",")
+	if strings.Contains(text, "runtime.install") {
+		t.Fatalf("runtime was installed despite --skip-cli: %s", text)
+	}
+	if !strings.Contains(text, "runtime.verify") {
+		t.Fatalf("existing runtime was not verified: %s", text)
+	}
+}
+
 func TestDarwinInstallSavesNativeState(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o700); err != nil {
