@@ -18,8 +18,10 @@ inside the guest. It covers:
 - update idempotency;
 - state-driven uninstall.
 
-The test uses `--skip-cli` plus a fixture runtime, so it does not depend on
-vendor installer URLs or network access to Claude/OpenCode.
+The test uses the product-level `--skip-cli` mode plus a fixture runtime, so it
+does not depend on vendor installer URLs or network access to Claude/OpenCode.
+`--skip-cli` is not a test-only hook: it is the supported `install`/`update`
+mode for retaining an operator-managed or offline sealed runtime.
 
 ## Runner
 

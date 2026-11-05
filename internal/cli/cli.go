@@ -58,7 +58,6 @@ type commonFlags struct {
 	yes        bool
 	json       bool
 	noColor    bool
-	skipCLI    bool
 	verbose    bool
 	backend    string
 	backendSet bool
@@ -236,8 +235,10 @@ func (a *App) runDoctor(ctx context.Context, args []string) error {
 func (a *App) runInstall(ctx context.Context, args []string) error {
 	var common commonFlags
 	var cliList, ownerUser, ownerHome, sharedDir string
+	var skipCLI bool
 	fs := newFlagSet("install")
 	addCommonFlags(fs, &common)
+	fs.BoolVar(&skipCLI, "skip-cli", false, "verify and keep the existing sealed CLI runtime")
 	fs.StringVar(&cliList, "cli", "", "comma-separated CLIs: claude,kimi,pi,opencode")
 	fs.StringVar(&ownerUser, "owner-user", "", "workstation owner account")
 	fs.StringVar(&ownerHome, "owner-home", "", "workstation owner home")
@@ -299,7 +300,7 @@ func (a *App) runInstall(ctx context.Context, args []string) error {
 	}
 	value := plan.Install(cfg, plan.Deps{
 		Backends: backends, Store: state.Store{Path: cfg.StatePath},
-		Platform: a.Platform, Backend: resolvedBackend, SkipRuntime: common.skipCLI,
+		Platform: a.Platform, Backend: resolvedBackend, SkipRuntime: skipCLI,
 	})
 	if _, err := a.executePlan(ctx, value, common.dryRun); err != nil {
 		return err
@@ -317,8 +318,12 @@ func (a *App) runUninstall(ctx context.Context, args []string) error {
 
 func (a *App) runStatePlan(ctx context.Context, operation string, args []string) error {
 	var common commonFlags
+	var skipCLI bool
 	fs := newFlagSet(operation)
 	addCommonFlags(fs, &common)
+	if operation == "update" {
+		fs.BoolVar(&skipCLI, "skip-cli", false, "verify and keep the existing sealed CLI runtime")
+	}
 	if err := fs.Parse(args); err != nil {
 		return usageError(err)
 	}
@@ -348,7 +353,7 @@ func (a *App) runStatePlan(ctx context.Context, operation string, args []string)
 	if err != nil {
 		return err
 	}
-	deps := plan.Deps{Backends: backends, Store: store, Platform: st.Platform, Backend: st.Backend, SkipRuntime: common.skipCLI}
+	deps := plan.Deps{Backends: backends, Store: store, Platform: st.Platform, Backend: st.Backend, SkipRuntime: skipCLI}
 	var value plan.Plan
 	if operation == "update" {
 		value = plan.Update(st, deps)
@@ -874,7 +879,6 @@ func addCommonFlags(fs *flag.FlagSet, common *commonFlags) {
 	fs.BoolVar(&common.yes, "y", common.yes, "alias for --yes")
 	fs.BoolVar(&common.json, "json", common.json, "machine-readable JSON output")
 	fs.BoolVar(&common.noColor, "no-color", common.noColor, "disable ANSI colors")
-	fs.BoolVar(&common.skipCLI, "skip-cli", common.skipCLI, "keep the existing CLI runtime instead of downloading it")
 	fs.BoolVar(&common.verbose, "verbose", common.verbose, "enable verbose diagnostics")
 	fs.Func("backend", "native, vm, or auto", func(value string) error {
 		common.backend = value
@@ -993,6 +997,7 @@ Commands:
   enter --tool NAME      internal Linux sandbox entry
 
 Mutating commands require root and --yes.
-Common options: --dry-run, --yes, --json, --no-color, --skip-cli,
-                --verbose, --backend native|vm|auto, --config FILE, --state FILE`)
+Common options: --dry-run, --yes, --json, --no-color, --verbose,
+                --backend native|vm|auto, --config FILE, --state FILE
+install/update: --skip-cli keeps the existing sealed runtime.`)
 }

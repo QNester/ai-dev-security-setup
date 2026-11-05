@@ -81,11 +81,13 @@ Podman are intentionally not treated as automatic VM providers; they remain a
 Phase 5 option. `--fix` cannot be combined with `--json`; `--fix --dry-run`
 prints the macOS Homebrew command without running it.
 
-Common flags are `--dry-run`, `--yes`, `--json`, `--no-color`, `--skip-cli`,
-`--verbose`, `--backend`, `--config`, and `--state`. Place them after the
-command. `--skip-cli` verifies an existing sealed runtime instead of downloading
-vendors; it is intended for reconfiguration and the e2e fixture. `--config`
-loads strict JSON; without it, defaults are derived from the owner account and
+Common flags are `--dry-run`, `--yes`, `--json`, `--no-color`, `--verbose`,
+`--backend`, `--config`, and `--state`. Place them after the command.
+`install` and `update` additionally accept `--skip-cli`, which verifies and
+keeps an existing sealed runtime instead of downloading vendors. It is intended
+for offline reconfiguration, pinned/operator-managed CLI trees, and controlled
+repair workflows. It is not available on unrelated commands. `--config` loads
+strict JSON; without it, defaults are derived from the owner account and
 platform. For `status`, `update`, and `uninstall`, an explicit `--state` wins;
 otherwise the state path comes from `--config`, then from the platform default.
 

@@ -130,6 +130,35 @@ func TestLauncherDispatch(t *testing.T) {
 	}
 }
 
+func TestSkipCLIIsLimitedToInstallAndUpdate(t *testing.T) {
+	configPath, _ := writeTestConfig(t)
+	app, _, _ := testApp()
+	if code := app.Run(context.Background(), "sandboxctl", []string{
+		"install", "--config", configPath, "--skip-cli", "--dry-run",
+	}); code != ExitOK {
+		t.Fatalf("install --skip-cli code=%d", code)
+	}
+	app, _, _ = testApp()
+	if code := app.Run(context.Background(), "sandboxctl", []string{
+		"status", "--skip-cli", "--state", filepath.Join(t.TempDir(), "missing.json"),
+	}); code != ExitUsage {
+		t.Fatalf("status accepted --skip-cli: code=%d", code)
+	}
+	configPath, _ = stateFixture(t, "linux")
+	app, _, _ = testApp()
+	if code := app.Run(context.Background(), "sandboxctl", []string{
+		"update", "--config", configPath, "--skip-cli", "--dry-run",
+	}); code != ExitOK {
+		t.Fatalf("update --skip-cli code=%d", code)
+	}
+	app, _, _ = testApp()
+	if code := app.Run(context.Background(), "sandboxctl", []string{
+		"uninstall", "--config", configPath, "--skip-cli", "--dry-run",
+	}); code != ExitUsage {
+		t.Fatalf("uninstall accepted --skip-cli: code=%d", code)
+	}
+}
+
 func TestColorizedStatusAndErrors(t *testing.T) {
 	app, stdout, _ := testApp()
 	app.forceColor = true

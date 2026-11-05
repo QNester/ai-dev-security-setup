@@ -804,6 +804,9 @@ func (r Runtime) Verify(ctx context.Context, cfg config.Config) error {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("runtime home has unsafe permissions")
 	}
+	if err := verifySealedTree(cfg, home); err != nil {
+		return err
+	}
 	for _, tool := range cfg.CLIs {
 		binary, err := resolveRuntimeBinary(home, tool)
 		if err != nil {
@@ -837,6 +840,58 @@ func (r Runtime) Verify(ctx context.Context, cfg config.Config) error {
 		}
 	}
 	return nil
+}
+
+func verifySealedTree(cfg config.Config, root string) error {
+	forbidden := coreruntime.WritableRoots(cfg)
+	for _, name := range coreruntime.SecretNames() {
+		if _, err := os.Lstat(filepath.Join(root, name)); err == nil {
+			return fmt.Errorf("runtime contains installer secret path %s", name)
+		}
+	}
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		uid, ok := fileInfoOwner(info)
+		if !ok || uid != 0 {
+			return fmt.Errorf("runtime path is not owned by root: %s", path)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return validateSymlinkTarget(root, path, target, forbidden)
+		}
+		switch {
+		case entry.IsDir():
+			if info.Mode().Perm()&0o022 != 0 {
+				return fmt.Errorf("runtime directory is group/other writable: %s", path)
+			}
+		case info.Mode().IsRegular():
+			if info.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 {
+				return fmt.Errorf("runtime contains a privilege bit: %s", path)
+			}
+			if info.Mode().Perm()&0o022 != 0 {
+				return fmt.Errorf("runtime file is group/other writable: %s", path)
+			}
+			capable, err := hasSecurityCapability(path)
+			if err != nil {
+				return err
+			}
+			if capable {
+				return fmt.Errorf("runtime contains file capabilities: %s", path)
+			}
+		default:
+			return fmt.Errorf("runtime contains an unsupported file type: %s", path)
+		}
+		return nil
+	})
 }
 
 func (r Runtime) Remove(ctx context.Context, cfg config.Config) error {
