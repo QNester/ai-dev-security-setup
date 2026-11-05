@@ -1,0 +1,15 @@
+# Managed by sandboxctl. Keep the guest disposable and mount only the selected
+# shared tree; the host home must never be exposed by default.
+cpus: {{.CPUs}}
+memory: {{.Memory}}
+disk: {{.Disk}}
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-{{.Arch}}.img"
+    arch: "{{.Arch}}"
+mounts:
+  - location: "{{.SharedDir}}"
+    writable: true
+{{- if .MountHome}}
+  - location: "~"
+    writable: false
+{{- end}}

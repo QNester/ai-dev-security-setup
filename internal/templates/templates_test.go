@@ -14,6 +14,7 @@ var templateFiles = []string{
 	"darwin/ai-sandbox.plist",
 	"darwin/ai-sandbox.sb",
 	"darwin/ai-review.sb",
+	"vm/lima.yaml",
 }
 
 func TestTemplatesAreEmbedded(t *testing.T) {
@@ -33,6 +34,8 @@ func TestTemplatesRender(t *testing.T) {
 		"TmpRoot": "/var/lib/ai-sandbox/tmp", "SharedDir": "/home/alice/Developer",
 		"RuntimeRoot": "/opt/ai-tools", "ReviewDir": "/private/var/review",
 		"ReviewPath": "/private/var/review/input", "TmpRule": "", "NetworkRules": "",
+		"Arch": "aarch64", "CPUs": 4, "Memory": "8GiB", "Disk": "60GiB",
+		"MountHome": false,
 	}
 	for _, name := range templateFiles {
 		t.Run(name, func(t *testing.T) {

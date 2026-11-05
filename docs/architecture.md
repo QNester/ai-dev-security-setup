@@ -89,6 +89,14 @@ capabilities, no Docker socket, controlled networking, shared-tree-only mounts,
 and state-driven cleanup are implemented and verified. See
 [ADR 0004](adr/0004-container-providers-deferred-to-phase-5.md).
 
+Phase 5 groundwork lives in `internal/platform/vm`: the Lima provider manages a
+named instance and exposes argv-only `create/start/stop/delete/shell/copy`
+operations plus a strict Lima YAML template that mounts only the shared tree.
+The host macOS binary will orchestrate a version-matched Linux guest artifact;
+the guest runs the existing Linux lifecycle and owns its own state. VM mutation
+is intentionally not enabled until [ADR 0005](adr/0005-vm-guest-artifact.md)'s
+artifact, mount, proxy, PTY/enter, and review requirements are verified.
+
 ## Repository tree
 
 ```text

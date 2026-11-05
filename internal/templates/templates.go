@@ -5,5 +5,5 @@ import "embed"
 
 // FS contains Linux unit/nftables and macOS launchd/Seatbelt templates.
 //
-//go:embed linux/* darwin/*
+//go:embed linux/* darwin/* vm/*
 var FS embed.FS

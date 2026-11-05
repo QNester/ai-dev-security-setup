@@ -68,4 +68,6 @@ sealed runtime activation, symlink launchers, and per-execution Seatbelt. Native
 macOS does not yet install pf anchors or launchd services, so network protection
 is profile-only. Phase 5 keeps Lima as the default VM provider and may add
 Docker/Podman only as explicit, separately validated providers; they are never
-auto-selected.
+auto-selected. The VM provider groundwork manages a Lima guest and expects a
+version-matched Linux guest artifact; mutation remains disabled until the guest
+artifact and mount/proxy paths are verified.

@@ -11,7 +11,7 @@
 | Services | systemd | per-execution Seatbelt; launchd deferred | systemd in guest |
 | Review | validated fd, `ro-bind-data` | root-owned staging and SBPL | Linux review backend |
 | Isolation claim | host-level, best-effort network | reduced, best-effort | preferred strict mode |
-| Current status | Lifecycle and fd-based review implemented; real read-only probes; Ubuntu VM runs pending | Native lifecycle and staged review implemented best-effort; pf/launchd deferred | detection/contracts only |
+| Current status | Lifecycle and fd-based review implemented; real read-only probes; Ubuntu VM runs pending | Native lifecycle and staged review implemented best-effort; pf/launchd deferred | Lima provider foundation; Linux guest lifecycle pending |
 
 `--backend auto` selects Bubblewrap on Linux and VM on macOS. Selecting
 `--backend native` on macOS explicitly accepts reduced isolation. Absence of a

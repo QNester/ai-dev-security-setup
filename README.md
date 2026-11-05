@@ -10,9 +10,12 @@ installer in this repository; the Go binary has no Bash or Python runtime.
 > macOS now implements `dscl` accounts, `chmod` ACLs, runtime sealing, launch
 > symlinks, Seatbelt `enter`, and staged `review`. Its network policy is
 > per-execution Seatbelt only; pf/launchd services are not installed yet, and
-> native macOS remains explicitly reduced and best-effort. The macOS VM backend
-> is Phase 5. Linux and macOS still need on-host verification before claiming
-> full parity with the reference installer.
+> native macOS remains explicitly reduced and best-effort. Phase 5 has started
+> with a Lima provider foundation (create/start/stop/delete/shell/copy) and a
+> Linux guest-artifact design; VM lifecycle mutation is not enabled until that
+> artifact and the guest mount/proxy paths are verified. Linux and macOS still
+> need on-host verification before claiming full parity with the reference
+> installer.
 
 ## Target model
 
