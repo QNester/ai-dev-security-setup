@@ -73,8 +73,8 @@ func (Launchers) Remove(context.Context, base.Config) error  { return base.ErrNo
 
 type Review struct{}
 
-func (Review) Prepare(context.Context, string) (base.Spec, func(), error) {
-	return base.Spec{}, func() {}, base.ErrNotImplemented
+func (Review) Prepare(context.Context, base.Config, string) (base.ReviewResult, error) {
+	return base.ReviewResult{}, base.ErrNotImplemented
 }
 
 func Backends() base.Backends {

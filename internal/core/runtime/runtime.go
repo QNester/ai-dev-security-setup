@@ -3,6 +3,7 @@ package runtime
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -111,6 +112,34 @@ func InstallerEnv(cfg config.Config, home, nodeRoot string) []string {
 		"TERM=dumb",
 		"TMPDIR=" + home,
 	}
+}
+
+// ReadOnlyPaths returns the host files and directories exposed read-only to a
+// sandboxed CLI. Missing optional entries are omitted.
+func ReadOnlyPaths(cfg config.Config) []string {
+	candidates := []string{
+		cfg.RuntimeRoot,
+		"/etc/passwd", "/etc/group", "/etc/nsswitch.conf", "/etc/hosts",
+		"/etc/host.conf", "/etc/gai.conf", "/etc/localtime", "/etc/ld.so.cache",
+		"/etc/os-release", "/etc/services", "/etc/protocols", "/etc/inputrc",
+		"/etc/machine-id", "/etc/ssl", "/etc/alternatives", "/etc/ca-certificates",
+	}
+	result := make([]string, 0, len(candidates))
+	for _, path := range candidates {
+		if _, err := os.Lstat(path); err == nil {
+			result = append(result, path)
+		}
+	}
+	return result
+}
+
+// ResolvConf returns the real path behind /etc/resolv.conf when present.
+func ResolvConf() (string, bool) {
+	path, err := filepath.EvalSymlinks("/etc/resolv.conf")
+	if err != nil {
+		return "", false
+	}
+	return path, true
 }
 
 // SandboxEnv is the minimal environment for a launched CLI.

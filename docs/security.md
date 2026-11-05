@@ -31,8 +31,14 @@ current flags. Every mutating command requires root and `--yes`.
 
 `enter` builds a Bubblewrap spec, runs it as the AI account, and sources the
 AI-owned secrets file inside the sandbox so credentials do not appear in the
-Bubblewrap argument list. `review` remains Phase 3. The Linux path is not yet
-verified on an Ubuntu 22.04/24.04 VM, so parity with the reference installer is
+Bubblewrap argument list.
+
+Linux `review` validates one shared-tree file as a regular, non-symlink, sized,
+UTF-8 text document, opens it with `O_NOFOLLOW`, rewinds the protected
+descriptor, and passes it with `--ro-bind-data`. The review sandbox mounts the
+AI home for authentication but not the shared tree and does not source the
+secrets file. macOS review remains future work. The Linux lifecycle and review
+still need Ubuntu 22.04/24.04 VM runs, so parity with the reference installer is
 not claimed.
 
 `doctor --fix --yes` is the only command that installs host prerequisites. On
@@ -45,7 +51,8 @@ group/other-writable and setgid components, and unexpected owners. Directory
 `fsync` ignores only `EINVAL`/`ENOTSUP` for filesystems such as APFS; other I/O
 errors fail. The macOS fallback is unit-tested by error classification but still
 requires an on-host APFS test. Safe regular-file opens use `O_NOFOLLOW` and
-nonblocking opens; descriptor-based review identity checks remain Phase 3.
+nonblocking opens; review keeps the validated descriptor open until Bubblewrap
+has consumed it, so replacing the path cannot redirect the review input.
 Configuration validation rejects traversal, unclean paths, overlapping trees,
 root accounts, unknown JSON fields, and unsupported CLIs. Mutating install uses
 platform-specific safe roots for state and other system paths.

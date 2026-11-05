@@ -43,9 +43,13 @@ func (l Launchers) Install(ctx context.Context, cfg config.Config) error {
 	if info, err := os.Lstat(services.LauncherDir); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("launcher directory must be a real directory")
 	}
-	selected := make(map[string]bool, len(cfg.CLIs))
+	selected := make(map[string]bool, len(cfg.CLIs)+1)
 	for _, cli := range cfg.CLIs {
 		selected[services.LauncherPath(cli)] = true
+	}
+	review := contains(cfg.CLIs, "claude")
+	if review {
+		selected[services.ReviewLauncher] = true
 	}
 	for _, path := range services.AllLaunchers() {
 		if !selected[path] {
@@ -57,6 +61,11 @@ func (l Launchers) Install(ctx context.Context, cfg config.Config) error {
 	for _, cli := range cfg.CLIs {
 		if err := replaceSymlink(services.LauncherPath(cli), services.LibexecPath); err != nil {
 			return fmt.Errorf("install %s launcher: %w", cli, err)
+		}
+	}
+	if review {
+		if err := replaceSymlink(services.ReviewLauncher, services.LibexecPath); err != nil {
+			return fmt.Errorf("install review launcher: %w", err)
 		}
 	}
 	return l.Verify(ctx, cfg)
@@ -99,8 +108,14 @@ func (l Launchers) Verify(ctx context.Context, cfg config.Config) error {
 	if uid, ok := fileInfoOwner(info); !ok || uid != 0 {
 		return fmt.Errorf("sandboxctl must be owned by root")
 	}
+	paths := make([]string, 0, len(cfg.CLIs)+1)
 	for _, cli := range cfg.CLIs {
-		path := services.LauncherPath(cli)
+		paths = append(paths, services.LauncherPath(cli))
+	}
+	if contains(cfg.CLIs, "claude") {
+		paths = append(paths, services.ReviewLauncher)
+	}
+	for _, path := range paths {
 		linkInfo, err := os.Lstat(path)
 		if err != nil {
 			return fmt.Errorf("launcher %s is missing: %w", path, err)

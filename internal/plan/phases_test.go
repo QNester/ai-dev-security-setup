@@ -133,7 +133,7 @@ func TestInstallPlanAppliesEverythingAndSavesState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Platform != "linux" || st.Runtime.Path != cfg.RuntimeRoot || len(st.Launchers) != len(cfg.CLIs) {
+	if st.Platform != "linux" || st.Runtime.Path != cfg.RuntimeRoot || len(st.Launchers) != len(cfg.CLIs)+1 {
 		t.Fatalf("unexpected state: %+v", st)
 	}
 	text := strings.Join(fake.events, ",")

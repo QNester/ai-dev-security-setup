@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
 	"regexp"
 
 	"github.com/QNester/ai-dev-security-setup/internal/config"
@@ -167,8 +168,14 @@ type HostBackend interface {
 	Cleanup(context.Context, Config) error
 }
 
+type ReviewResult struct {
+	Spec    Spec
+	Files   []*os.File
+	Cleanup func()
+}
+
 type ReviewBackend interface {
-	Prepare(context.Context, string) (Spec, func(), error)
+	Prepare(context.Context, Config, string) (ReviewResult, error)
 }
 
 type Backends struct {

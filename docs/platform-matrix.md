@@ -11,16 +11,17 @@
 | Services | systemd | launchd | systemd in guest |
 | Review | validated fd, `ro-bind-data` | root-owned staging and SBPL | Linux review backend |
 | Isolation claim | host-level, best-effort network | reduced, best-effort | preferred strict mode |
-| Current status | Lifecycle implemented; real read-only probe; Ubuntu VM runs pending | diagnostics/contracts only | detection/contracts only |
+| Current status | Lifecycle and fd-based review implemented; real read-only probes; Ubuntu VM runs pending | diagnostics/contracts only | detection/contracts only |
 
 `--backend auto` selects Bubblewrap on Linux and VM on macOS. Selecting
 `--backend native` on macOS explicitly accepts reduced isolation. Absence of a
 VM provider is a doctor failure in auto/VM mode, not a reason to silently fall
 back to native Seatbelt.
 
-Linux native now mutates the host and still needs Ubuntu 22.04/24.04 VM runs.
-macOS native and VM backends continue to stop before mutation. Integration
-targets listed above are requirements, not a claim of tested support today.
+Linux native now mutates the host and implements descriptor-based review; both
+still need Ubuntu 22.04/24.04 VM runs. macOS native and VM backends continue to
+stop before mutation and macOS review remains unavailable. Integration targets
+listed above are requirements, not a claim of tested support today.
 
 Lima is the default and only automatically installable VM provider. UTM remains
 a manual alternative. Docker and Podman are not selected by `--backend auto` and

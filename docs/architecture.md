@@ -40,8 +40,15 @@ separate orchestrator:
 `enter` loads state as root, maps the requested start directory to the shared
 tree, builds a `base.Spec`, and replaces itself with `runuser -u <ai> --
 bwrap`. The inner Bash entrypoint sources the AI-owned secrets file and executes
-the selected CLI, so secrets never become Bubblewrap arguments. `review` keeps
-its future descriptor-based path.
+the selected CLI, so secrets never become Bubblewrap arguments.
+
+Linux `review` is a separate spec: it validates one regular file inside the
+shared tree, rejects symlinks, oversized input, and non-text content, and keeps
+the file descriptor open until Bubblewrap copies it with `--ro-bind-data`. The
+review sandbox mounts the AI home for authentication, not the shared tree, and
+does not source the secrets file. The CLI drops to the AI account with
+`SysProcAttr.Credential` and passes the descriptor through `ExtraFiles`. macOS
+review remains part of the later native/VM work.
 
 ## Phase 5 VM provider scope
 
@@ -69,7 +76,7 @@ internal/core/
   users/                     account and group policy
   shared/                    ACL, alias, and start-directory policy
   runtime/                   CLI candidates, installer URLs, sandbox environment
-  review/                    portable review policy (Phase 3)
+  review/                    portable review content and size validation
   services/                  systemd, nftables, and launcher paths
 internal/platform/
   detect/                    OS, architecture, and capability reporting
@@ -149,5 +156,7 @@ The Linux installation places one root-owned binary at
 `/usr/local/libexec/sandboxctl`. `claude-secure`, `kimi-secure`, `pi-secure`,
 and `opencode-secure` are symlinks to it. argv0 dispatch selects `enter`; the
 launcher first re-executes through `sudo` for the state read, then drops to the
-AI account with `runuser` before Bubblewrap. `ai-review-file` and its root
-dispatch remain Phase 3. There is no setuid and no generated shell launcher.
+AI account with `runuser` before Bubblewrap. `ai-review-file` is installed when
+Claude is selected and dispatches to `review`; it uses the same root state read
+and passes a validated descriptor instead of mounting the shared tree. There is
+no setuid and no generated shell launcher.

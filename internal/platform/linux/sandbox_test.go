@@ -79,6 +79,32 @@ func TestWrapBuildsBubblewrapArgv(t *testing.T) {
 	}
 }
 
+func TestWrapBindsReviewDescriptorWithoutSharedTree(t *testing.T) {
+	spec := base.Spec{
+		Argv:     []string{"/opt/ai-tools/bin/claude", "--print"},
+		Cwd:      "/review",
+		Env:      map[string]string{"HOME": "/home/ai-dev"},
+		Home:     "/home/ai-dev",
+		Network:  base.NetworkOpen,
+		ReviewFD: 3,
+	}
+	argv, err := (Sandbox{}).Wrap(context.Background(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(argv, "\x00")
+	for _, fragment := range []string{
+		"--dir\x00/review", "--ro-bind-data\x003\x00/review/input", "--chdir\x00/review",
+	} {
+		if !strings.Contains(joined, fragment) {
+			t.Fatalf("missing %q in %v", fragment, argv)
+		}
+	}
+	if strings.Contains(joined, "/home/alice/Developer") {
+		t.Fatalf("review argv leaked the shared tree: %v", argv)
+	}
+}
+
 func TestWrapRejectsUnsafeSpecs(t *testing.T) {
 	valid := base.Spec{Argv: []string{"/usr/bin/true"}, Network: base.NetworkOpen, ReviewFD: -1}
 	for name, mutate := range map[string]func(*base.Spec){
@@ -87,7 +113,6 @@ func TestWrapRejectsUnsafeSpecs(t *testing.T) {
 			s.WritablePaths = []string{"/shared"}
 		},
 		"invalid env": func(s *base.Spec) { s.Env = map[string]string{"BAD-NAME": "x"} },
-		"review fd":   func(s *base.Spec) { s.ReviewFD = 3 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			spec := valid

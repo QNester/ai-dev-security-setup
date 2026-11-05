@@ -26,6 +26,7 @@ import (
 	"github.com/QNester/ai-dev-security-setup/internal/platform/darwin"
 	"github.com/QNester/ai-dev-security-setup/internal/platform/detect"
 	"github.com/QNester/ai-dev-security-setup/internal/platform/linux"
+	"github.com/QNester/ai-dev-security-setup/internal/runner"
 	"github.com/QNester/ai-dev-security-setup/internal/state"
 )
 
@@ -107,7 +108,7 @@ func (a *App) Run(ctx context.Context, argv0 string, args []string) int {
 	case "status":
 		err = a.runStatus(args[1:])
 	case "review":
-		err = a.runReview(args[1:])
+		err = a.runReview(ctx, args[1:])
 	case "enter":
 		err = a.runEnter(args[1:])
 	default:
@@ -402,7 +403,7 @@ func (a *App) runStatus(args []string) error {
 	return nil
 }
 
-func (a *App) runReview(args []string) error {
+func (a *App) runReview(ctx context.Context, args []string) error {
 	var common commonFlags
 	fs := newFlagSet("review")
 	addCommonFlags(fs, &common)
@@ -412,7 +413,61 @@ func (a *App) runReview(args []string) error {
 	if fs.NArg() != 1 || !filepath.IsAbs(fs.Arg(0)) {
 		return usageError(errors.New("review requires one absolute file path"))
 	}
-	return fmt.Errorf("review is scheduled for Phase 3: %w", plan.ErrNotImplemented)
+	if common.json {
+		return usageError(errors.New("review emits model text; --json is not supported"))
+	}
+	if a.Platform != "linux" {
+		return fmt.Errorf("sandboxed review is not available on %s yet: %w", a.Platform, plan.ErrNotImplemented)
+	}
+	if a.EUID != 0 {
+		return a.reexecWithSudo("review", args)
+	}
+	store, err := a.stateStore(common)
+	if err != nil {
+		return err
+	}
+	st, err := store.Load()
+	if err != nil {
+		return fmt.Errorf("load state for review: %w", err)
+	}
+	if st.Platform != a.Platform {
+		return fmt.Errorf("state platform %q does not match current platform %q", st.Platform, a.Platform)
+	}
+	if !containsCLI(st.Runtime.CLIs, "claude") {
+		return errors.New("review requires the claude CLI to be installed")
+	}
+	backends, err := a.backends()
+	if err != nil {
+		return err
+	}
+	prepared, err := backends.Review.Prepare(ctx, st.Config, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if prepared.Cleanup != nil {
+		defer prepared.Cleanup()
+	}
+	argv, err := backends.Sandbox.Wrap(ctx, prepared.Spec)
+	if err != nil {
+		return err
+	}
+	credential, err := credentialFor(st.Config.AIUser)
+	if err != nil {
+		return err
+	}
+	_, err = (runner.OSRunner{}).Run(ctx, runner.Command{
+		Path:       argv[0],
+		Args:       argv[1:],
+		Env:        []string{},
+		ExtraFiles: prepared.Files,
+		Credential: credential,
+		Stdout:     a.Stdout,
+		Stderr:     a.Stderr,
+	})
+	if err != nil {
+		return fmt.Errorf("review failed: %w", err)
+	}
+	return nil
 }
 
 func (a *App) runEnter(args []string) error {
@@ -437,7 +492,7 @@ func (a *App) runEnter(args []string) error {
 		return fmt.Errorf("sandbox entry is not available on %s: %w", a.Platform, plan.ErrNotImplemented)
 	}
 	if a.EUID != 0 {
-		return a.reexecEnterWithSudo(args)
+		return a.reexecWithSudo("enter", args)
 	}
 	store, err := a.stateStore(common)
 	if err != nil {
@@ -479,17 +534,45 @@ func (a *App) runEnter(args []string) error {
 	return execAsAI(st.Config.AIUser, argv)
 }
 
-func (a *App) reexecEnterWithSudo(args []string) error {
+func (a *App) reexecWithSudo(command string, args []string) error {
 	sudo, err := exec.LookPath("sudo")
 	if err != nil {
-		return errors.New("enter must be started through sudo or as root")
+		return fmt.Errorf("%s must be started through sudo or as root", command)
 	}
 	self, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	argv := append([]string{sudo, self, "enter"}, args...)
+	argv := append([]string{sudo, self, command}, args...)
 	return syscall.Exec(sudo, argv, os.Environ())
+}
+
+func credentialFor(username string) (*syscall.Credential, error) {
+	account, err := user.Lookup(username)
+	if err != nil {
+		return nil, fmt.Errorf("look up %s: %w", username, err)
+	}
+	uid, err := strconv.ParseUint(account.Uid, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("parse UID for %s: %w", username, err)
+	}
+	gid, err := strconv.ParseUint(account.Gid, 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("parse GID for %s: %w", username, err)
+	}
+	groupIDs, err := account.GroupIds()
+	if err != nil {
+		return nil, fmt.Errorf("read groups for %s: %w", username, err)
+	}
+	groups := make([]uint32, 0, len(groupIDs))
+	for _, value := range groupIDs {
+		parsed, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("parse group ID %q: %w", value, err)
+		}
+		groups = append(groups, uint32(parsed))
+	}
+	return &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), Groups: groups}, nil
 }
 
 func execAsAI(user string, argv []string) error {
@@ -520,21 +603,11 @@ func buildEnterSpec(st state.State, tool, startDir string, args []string) (base.
 	if info, err := os.Stat(program); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 		return base.Spec{}, fmt.Errorf("missing executable: %s", program)
 	}
-	readOnly := []string{cfg.RuntimeRoot}
-	for _, path := range []string{
-		"/etc/passwd", "/etc/group", "/etc/nsswitch.conf", "/etc/hosts",
-		"/etc/host.conf", "/etc/gai.conf", "/etc/localtime", "/etc/ld.so.cache",
-		"/etc/os-release", "/etc/services", "/etc/protocols", "/etc/inputrc",
-		"/etc/machine-id", "/etc/ssl", "/etc/alternatives", "/etc/ca-certificates",
-	} {
-		if _, err := os.Lstat(path); err == nil {
-			readOnly = append(readOnly, path)
-		}
-	}
+	readOnly := coreruntime.ReadOnlyPaths(cfg)
 	mounts := []base.BindMount{{
 		Source: cfg.SharedSource, Target: cfg.SharedDir, ReadOnly: false,
 	}}
-	if resolved, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil {
+	if resolved, ok := coreruntime.ResolvConf(); ok {
 		mounts = append(mounts, base.BindMount{
 			Source: resolved, Target: "/etc/resolv.conf", ReadOnly: true,
 		})
@@ -870,7 +943,7 @@ Commands:
   update                 update from saved state (requires root + --yes)
   uninstall              remove integration recorded in saved state
   status                 show saved installation state
-  review FILE            review one file (Phase 3)
+  review FILE            read-only single-file review
   enter --tool NAME      internal Linux sandbox entry
 
 Mutating commands require root and --yes.

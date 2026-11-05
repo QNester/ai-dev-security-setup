@@ -3,11 +3,11 @@ package linux
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/QNester/ai-dev-security-setup/internal/config"
@@ -46,9 +46,6 @@ func (s Sandbox) Wrap(ctx context.Context, spec base.Spec) ([]string, error) {
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
-	if spec.ReviewFD >= 0 {
-		return nil, errors.New("fd-based review is not implemented until Phase 3")
-	}
 	if err := validateMountConflicts(spec); err != nil {
 		return nil, err
 	}
@@ -61,16 +58,19 @@ func (s Sandbox) Wrap(ctx context.Context, spec base.Spec) ([]string, error) {
 		args = append(args, "--ro-bind", path, path)
 	}
 	args = append(args, "--tmpfs", "/etc", "--tmpfs", "/home", "--tmpfs", "/run", "--tmpfs", "/var")
+	if spec.Tmp != "" {
+		args = append(args, "--bind", spec.Tmp, "/tmp")
+	} else {
+		args = append(args, "--tmpfs", "/tmp")
+	}
+	if spec.ReviewFD >= 0 {
+		args = append(args, "--dir", "/review")
+	}
 	for _, path := range sortedUnique(spec.ReadOnlyPaths) {
 		args = append(args, "--dir", filepath.Dir(path), "--ro-bind", path, path)
 	}
 	if spec.Home != "" {
 		args = append(args, "--dir", filepath.Dir(spec.Home), "--dir", spec.Home, "--bind", spec.Home, spec.Home)
-	}
-	if spec.Tmp != "" {
-		args = append(args, "--bind", spec.Tmp, "/tmp")
-	} else {
-		args = append(args, "--tmpfs", "/tmp")
 	}
 	for _, path := range sortedUnique(spec.WritablePaths) {
 		if path == spec.Home || path == spec.Tmp {
@@ -89,6 +89,9 @@ func (s Sandbox) Wrap(ctx context.Context, spec base.Spec) ([]string, error) {
 			flag = "--ro-bind"
 		}
 		args = append(args, flag, mount.Source, mount.Target)
+	}
+	if spec.ReviewFD >= 0 {
+		args = append(args, "--ro-bind-data", strconv.Itoa(spec.ReviewFD), "/review/input")
 	}
 	keys := make([]string, 0, len(spec.Env))
 	for key, value := range spec.Env {
@@ -195,12 +198,6 @@ func validEnvName(name string) bool {
 		}
 	}
 	return true
-}
-
-type Review struct{}
-
-func (Review) Prepare(context.Context, string) (base.Spec, func(), error) {
-	return base.Spec{}, func() {}, base.ErrNotImplemented
 }
 
 func Backends() base.Backends { return BackendsWithDeps(Deps{}) }

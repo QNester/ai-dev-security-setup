@@ -4,14 +4,16 @@
 Pi, and OpenCode on Linux and macOS. It is the successor to the Bash reference
 installer in this repository; the Go binary has no Bash or Python runtime.
 
-> **Phase 2 (Linux):** `install`, `update`, and `uninstall` now perform real
+> **Phase 3 (Linux review):** `install`, `update`, and `uninstall` perform real
 > system changes on Linux behind `--yes` and a root check. The lifecycle covers
 > the dedicated account, shared ACLs and bind alias, sealed CLI runtime,
 > UID-scoped nftables policy, systemd units, and root-owned launcher symlinks.
-> `enter` runs a selected CLI inside Bubblewrap. `review` remains Phase 3 and
-> both macOS backends remain later phases. The Linux lifecycle still needs
-> on-host integration testing on Ubuntu 22.04 and 24.04 before claiming full
-> parity with the reference installer.
+> `enter` runs a selected CLI inside Bubblewrap. `review` now validates one
+> shared-tree file, passes a protected descriptor with `--ro-bind-data`, and
+> never mounts the shared tree or loads secrets. macOS review and both macOS
+> lifecycle backends remain later phases. The Linux lifecycle and review still
+> need on-host integration testing on Ubuntu 22.04 and 24.04 before claiming
+> full parity with the reference installer.
 
 ## Target model
 
@@ -84,6 +86,12 @@ otherwise the state path comes from `--config`, then from the platform default.
 Mutating `install`, `update`, and `uninstall` require root and `--yes`; without
 `--yes` the command exits with a usage error. `--verbose` is accepted but does
 not yet add progress detail. `--dry-run` never invokes backend code.
+
+`review` requires an installed state with `claude` selected. It accepts only a
+regular UTF-8 text file inside the shared tree, rejects symlinks and oversized
+input, and exposes the file to the model as a read-only descriptor. The shared
+tree is not mounted in review mode and the secrets file is not loaded. macOS
+review is not available yet.
 
 Doctor reports OS/architecture, privileges, init system, Bubblewrap and user
 namespaces, nftables, ACL tooling, Seatbelt's deprecated status, and Lima/UTM on

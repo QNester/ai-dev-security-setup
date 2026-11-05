@@ -22,6 +22,10 @@ type Command struct {
 	Env            []string
 	Dir            string
 	Stdin          io.Reader
+	Stdout         io.Writer
+	Stderr         io.Writer
+	ExtraFiles     []*os.File
+	Credential     *syscall.Credential
 	MaxOutputBytes int64
 }
 
@@ -57,7 +61,8 @@ func (OSRunner) Run(ctx context.Context, command Command) (Result, error) {
 	}
 	cmd.Dir = command.Dir
 	cmd.Stdin = command.Stdin
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.ExtraFiles = command.ExtraFiles
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: command.Credential}
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return nil
@@ -71,8 +76,16 @@ func (OSRunner) Run(ctx context.Context, command Command) (Result, error) {
 	cmd.WaitDelay = 5 * time.Second
 	stdout := &limitedBuffer{remaining: limit}
 	stderr := &limitedBuffer{remaining: limit}
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	if command.Stdout != nil {
+		cmd.Stdout = command.Stdout
+	} else {
+		cmd.Stdout = stdout
+	}
+	if command.Stderr != nil {
+		cmd.Stderr = command.Stderr
+	} else {
+		cmd.Stderr = stderr
+	}
 	err := cmd.Run()
 	result := Result{
 		Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: 0,

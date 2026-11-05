@@ -306,11 +306,16 @@ func snapshot(cfg config.Config, previous state.State) state.State {
 	for _, record := range records {
 		serviceRecords = append(serviceRecords, state.Service{Name: record.Name, Path: record.Path})
 	}
-	launchers := make([]state.Launcher, 0, len(cfg.CLIs))
+	launchers := make([]state.Launcher, 0, len(cfg.CLIs)+1)
 	for _, cli := range cfg.CLIs {
 		launchers = append(launchers, state.Launcher{
 			Name: services.LauncherName(cli), Path: services.LauncherPath(cli), Target: services.LibexecPath,
 		})
+		if cli == "claude" {
+			launchers = append(launchers, state.Launcher{
+				Name: "ai-review-file", Path: services.ReviewLauncher, Target: services.LibexecPath,
+			})
+		}
 	}
 	return state.State{
 		Version:  state.Version,

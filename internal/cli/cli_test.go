@@ -174,6 +174,14 @@ func TestNoColorDisablesANSI(t *testing.T) {
 	}
 }
 
+func TestReviewRejectsJSON(t *testing.T) {
+	app, _, _ := testApp()
+	code := app.Run(context.Background(), "sandboxctl", []string{"review", "--json", "/tmp/input.txt"})
+	if code != ExitUsage {
+		t.Fatalf("code=%d", code)
+	}
+}
+
 func TestSpinnerRendersAndClears(t *testing.T) {
 	app, _, stderr := testApp()
 	app.forceSpinner = true
