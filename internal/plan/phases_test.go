@@ -148,6 +148,34 @@ func TestInstallPlanAppliesEverythingAndSavesState(t *testing.T) {
 	}
 }
 
+func TestDarwinInstallSavesNativeState(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default("darwin", "John.Doe", "/Users/John Doe")
+	cfg.StatePath = filepath.Join(dir, "state.json")
+	fake := new(fakeBackend)
+	store := state.Store{Path: cfg.StatePath, Root: dir}
+	deps := Deps{Backends: fake.backends(), Store: store, Platform: "darwin", Backend: "seatbelt"}
+	if _, err := Execute(context.Background(), Install(cfg, deps), false); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Platform != "darwin" || st.Backend != "seatbelt" || st.Shared.ACL != "chmod" {
+		t.Fatalf("unexpected darwin state: %+v", st)
+	}
+	if st.Firewall != nil || len(st.Services) != 0 || len(st.Mounts) != 0 {
+		t.Fatalf("darwin state contains Linux resources: %+v", st)
+	}
+	if len(st.Launchers) != len(cfg.CLIs)+1 {
+		t.Fatalf("launchers=%v", st.Launchers)
+	}
+}
+
 func TestInstallFailureRollsBackRuntimeAndDoesNotSaveState(t *testing.T) {
 	cfg, deps, fake, store := testDeps(t)
 	fake.fail = "network.apply"

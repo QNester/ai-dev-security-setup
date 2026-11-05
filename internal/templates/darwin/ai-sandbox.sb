@@ -1,7 +1,9 @@
 (version 1)
 (deny default)
 (allow process-exec (literal "{{.Program}}"))
-(allow file-read* (subpath "/System") (subpath "/usr/lib") (subpath "/opt/ai-tools"))
-(allow file-read* file-write* (subpath "{{.AIHome}}") (subpath "{{.TmpRoot}}"))
-(allow file-read* file-write* (subpath "{{.SharedDir}}"))
+(allow process-exec (subpath "{{.RuntimeRoot}}"))
+(allow file-read* (subpath "/System") (subpath "/usr/bin") (subpath "/usr/lib") (subpath "/usr/share") (subpath "/Library") (subpath "/bin") (subpath "/sbin") (subpath "/private/etc") (subpath "/etc") (subpath "/dev"))
+(allow file-read* (subpath "{{.RuntimeRoot}}") (subpath "{{.AIHome}}") (subpath "{{.SharedDir}}"))
+(allow file-read* file-write* (subpath "{{.AIHome}}") (subpath "{{.TmpRoot}}") (subpath "{{.SharedDir}}"))
+(allow file-write* (literal "/dev/null"))
 {{.NetworkRules}}

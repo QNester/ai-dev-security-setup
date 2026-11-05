@@ -270,8 +270,12 @@ func (a *App) runInstall(ctx context.Context, args []string) error {
 	if sharedDir != "" {
 		cfg.SharedDir = filepath.Clean(sharedDir)
 	}
-	if _, err := detect.ResolveBackend(a.Platform, cfg.Backend); err != nil {
+	resolvedBackend, err := detect.ResolveBackend(a.Platform, cfg.Backend)
+	if err != nil {
 		return usageError(err)
+	}
+	if !common.dryRun && a.Platform == "darwin" && resolvedBackend != "seatbelt" {
+		return errors.New("macOS VM lifecycle is Phase 5; use --backend native for the best-effort native backend")
 	}
 	if common.dryRun {
 		if err := cfg.Validate(); err != nil {
@@ -292,7 +296,10 @@ func (a *App) runInstall(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	value := plan.Install(cfg, plan.Deps{Backends: backends, Store: state.Store{Path: cfg.StatePath}})
+	value := plan.Install(cfg, plan.Deps{
+		Backends: backends, Store: state.Store{Path: cfg.StatePath},
+		Platform: a.Platform, Backend: resolvedBackend,
+	})
 	if _, err := a.executePlan(ctx, value, common.dryRun); err != nil {
 		return err
 	}
@@ -340,7 +347,7 @@ func (a *App) runStatePlan(ctx context.Context, operation string, args []string)
 	if err != nil {
 		return err
 	}
-	deps := plan.Deps{Backends: backends, Store: store}
+	deps := plan.Deps{Backends: backends, Store: store, Platform: st.Platform, Backend: st.Backend}
 	var value plan.Plan
 	if operation == "update" {
 		value = plan.Update(st, deps)
@@ -484,7 +491,7 @@ func (a *App) runEnter(args []string) error {
 	if startDir != "" && !filepath.IsAbs(startDir) {
 		return usageError(errors.New("start-dir must be absolute"))
 	}
-	if a.Platform != "linux" {
+	if a.Platform != "linux" && a.Platform != "darwin" {
 		return fmt.Errorf("sandbox entry is not available on %s: %w", a.Platform, plan.ErrNotImplemented)
 	}
 	if a.EUID != 0 {
@@ -501,6 +508,9 @@ func (a *App) runEnter(args []string) error {
 	if st.Platform != a.Platform {
 		return fmt.Errorf("state platform %q does not match current platform %q", st.Platform, a.Platform)
 	}
+	if a.Platform == "darwin" && st.Backend != "seatbelt" {
+		return errors.New("macOS VM entry is Phase 5; use --backend native")
+	}
 	if !containsCLI(st.Runtime.CLIs, tool) {
 		return fmt.Errorf("%s is not installed", tool)
 	}
@@ -515,7 +525,7 @@ func (a *App) runEnter(args []string) error {
 	if err != nil {
 		return err
 	}
-	spec, err := buildEnterSpec(st, tool, resolvedStart, fs.Args())
+	spec, err := buildEnterSpec(st, a.Platform, tool, resolvedStart, fs.Args())
 	if err != nil {
 		return err
 	}
@@ -527,7 +537,7 @@ func (a *App) runEnter(args []string) error {
 	if err != nil {
 		return err
 	}
-	return execAsAI(st.Config.AIUser, argv)
+	return execAsAI(a.Platform, st.Config.AIUser, argv)
 }
 
 func (a *App) reexecWithSudo(command string, args []string) error {
@@ -571,44 +581,54 @@ func credentialFor(username string) (*syscall.Credential, error) {
 	return &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), Groups: groups}, nil
 }
 
-func execAsAI(user string, argv []string) error {
+func execAsAI(platform, user string, argv []string) error {
 	if len(argv) == 0 {
 		return errors.New("empty sandbox command")
 	}
+	candidates := []string{"runuser", "sudo"}
+	if platform == "darwin" {
+		candidates = []string{"sudo", "runuser"}
+	}
 	dropper := ""
-	if path, err := exec.LookPath("runuser"); err == nil {
-		dropper = path
-	} else if path, err := exec.LookPath("sudo"); err == nil {
-		dropper = path
-	} else {
+	for _, candidate := range candidates {
+		if path, err := exec.LookPath(candidate); err == nil {
+			dropper = path
+			break
+		}
+	}
+	if dropper == "" {
 		return errors.New("runuser or sudo is required to drop privileges")
 	}
-	args := []string{dropper}
-	if filepath.Base(dropper) == "runuser" {
-		args = append(args, "-u", user, "--")
-	} else {
-		args = append(args, "-u", user, "--")
-	}
+	args := []string{dropper, "-u", user, "--"}
 	args = append(args, argv...)
 	return syscall.Exec(dropper, args, os.Environ())
 }
 
-func buildEnterSpec(st state.State, tool, startDir string, args []string) (base.Spec, error) {
+func buildEnterSpec(st state.State, platform, tool, startDir string, args []string) (base.Spec, error) {
 	cfg := st.Config
 	program := filepath.Join(cfg.RuntimeRoot, "bin", tool)
 	if info, err := os.Stat(program); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 		return base.Spec{}, fmt.Errorf("missing executable: %s", program)
 	}
 	readOnly := coreruntime.ReadOnlyPaths(cfg)
-	mounts := []base.BindMount{{
-		Source: cfg.SharedSource, Target: cfg.SharedDir, ReadOnly: false,
-	}}
-	if resolved, ok := coreruntime.ResolvConf(); ok {
+	var mounts []base.BindMount
+	var writable []string
+	if platform == "darwin" {
+		writable = []string{cfg.SharedDir}
+	} else {
+		mounts = []base.BindMount{{
+			Source: cfg.SharedSource, Target: cfg.SharedDir, ReadOnly: false,
+		}}
+	}
+	if resolved, ok := coreruntime.ResolvConf(); ok && platform == "linux" {
 		mounts = append(mounts, base.BindMount{
 			Source: resolved, Target: "/etc/resolv.conf", ReadOnly: true,
 		})
 	}
 	env := coreruntime.SandboxEnv(cfg)
+	if platform == "darwin" {
+		env["TMPDIR"] = cfg.TmpRoot
+	}
 	if _, err := os.Stat(coreruntime.OpenCodeConfigPath(cfg)); err == nil {
 		env["OPENCODE_CONFIG"] = coreruntime.OpenCodeConfigPath(cfg)
 	}
@@ -618,9 +638,12 @@ func buildEnterSpec(st state.State, tool, startDir string, args []string) (base.
 		Cwd:           startDir,
 		Env:           env,
 		ReadOnlyPaths: readOnly,
+		WritablePaths: writable,
 		BindMounts:    mounts,
 		Home:          cfg.AIHome,
 		Tmp:           cfg.TmpRoot,
+		Workspace:     cfg.SharedDir,
+		RuntimeRoot:   cfg.RuntimeRoot,
 		Network:       base.NetworkOpen,
 		ReviewFD:      -1,
 	}, nil

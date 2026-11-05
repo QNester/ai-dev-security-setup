@@ -18,6 +18,8 @@ import (
 type Deps struct {
 	Backends base.Backends
 	Store    state.Store
+	Platform string
+	Backend  string
 }
 
 func Install(cfg config.Config, options ...Deps) Plan {
@@ -46,7 +48,7 @@ func installPlan(operation string, cfg config.Config, previous state.State, deps
 		networkAction(cfg, deps.Backends.Network),
 		serviceAction(cfg, deps.Backends.Services),
 		launcherAction(cfg, deps.Backends.Launchers),
-		saveStateAction(cfg, previous, deps.Store),
+		saveStateAction(cfg, previous, deps),
 	}
 	return Plan{Operation: operation, Actions: actions}
 }
@@ -236,9 +238,10 @@ func verifyRemovedAction(cfg config.Config, backends base.Backends) Action {
 	}
 }
 
-func saveStateAction(cfg config.Config, previous state.State, store state.Store) Action {
+func saveStateAction(cfg config.Config, previous state.State, deps Deps) Action {
 	var backup state.Backup
 	hadState := false
+	store := deps.Store
 	return FuncAction{
 		Description: "save installation state",
 		ApplyFunc: func(context.Context) error {
@@ -252,7 +255,7 @@ func saveStateAction(cfg config.Config, previous state.State, store state.Store)
 			} else if !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
-			return store.Save(snapshot(cfg, previous))
+			return store.Save(snapshot(cfg, previous, deps))
 		},
 		RollbackFunc: func(context.Context) error {
 			if hadState && backup.Path != "" {
@@ -300,11 +303,18 @@ func removeStateAction(store state.Store) Action {
 	}
 }
 
-func snapshot(cfg config.Config, previous state.State) state.State {
-	records := services.ServiceRecords()
-	serviceRecords := make([]state.Service, 0, len(records))
-	for _, record := range records {
-		serviceRecords = append(serviceRecords, state.Service{Name: record.Name, Path: record.Path})
+func snapshot(cfg config.Config, previous state.State, deps Deps) state.State {
+	platform := deps.Platform
+	if platform == "" {
+		platform = "linux"
+	}
+	backend := deps.Backend
+	if backend == "" {
+		if platform == "darwin" {
+			backend = "seatbelt"
+		} else {
+			backend = "bwrap"
+		}
 	}
 	launchers := make([]state.Launcher, 0, len(cfg.CLIs)+1)
 	for _, cli := range cfg.CLIs {
@@ -317,22 +327,30 @@ func snapshot(cfg config.Config, previous state.State) state.State {
 			})
 		}
 	}
-	return state.State{
-		Version:  state.Version,
-		Platform: "linux",
-		Backend:  "bwrap",
-		Config:   cfg,
-		Created:  state.Created{User: cfg.AIUser, Group: users.SharedGroup},
-		Shared: state.Shared{
-			Path: cfg.SharedDir, ACL: "setfacl", Alias: cfg.SharedSource,
-		},
-		Services:  serviceRecords,
-		Firewall:  &state.Firewall{Type: services.FirewallType, Table: services.FirewallTable},
+	result := state.State{
+		Version:   state.Version,
+		Platform:  platform,
+		Backend:   backend,
+		Config:    cfg,
+		Created:   state.Created{User: cfg.AIUser, Group: users.SharedGroup},
 		Runtime:   state.Runtime{Path: cfg.RuntimeRoot, CLIs: cfg.CLIs},
 		Launchers: launchers,
-		Mounts: []state.Mount{{
-			Source: cfg.SharedDir, Target: cfg.SharedSource, Options: shared.AliasOptions(),
-		}},
-		Backups: previous.Backups,
+		Backups:   previous.Backups,
 	}
+	if platform == "darwin" {
+		result.Shared = state.Shared{Path: cfg.SharedDir, ACL: "chmod"}
+		return result
+	}
+	records := services.ServiceRecords()
+	serviceRecords := make([]state.Service, 0, len(records))
+	for _, record := range records {
+		serviceRecords = append(serviceRecords, state.Service{Name: record.Name, Path: record.Path})
+	}
+	result.Shared = state.Shared{Path: cfg.SharedDir, ACL: "setfacl", Alias: cfg.SharedSource}
+	result.Services = serviceRecords
+	result.Firewall = &state.Firewall{Type: services.FirewallType, Table: services.FirewallTable}
+	result.Mounts = []state.Mount{{
+		Source: cfg.SharedDir, Target: cfg.SharedSource, Options: shared.AliasOptions(),
+	}}
+	return result
 }

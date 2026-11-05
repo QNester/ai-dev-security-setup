@@ -45,6 +45,8 @@ type Spec struct {
 	BindMounts       []BindMount
 	Home             string
 	Tmp              string
+	Workspace        string
+	RuntimeRoot      string
 	Network          NetworkPolicy
 	DNSServers       []string
 	AllowedEndpoints []Endpoint
@@ -68,7 +70,7 @@ func (s Spec) Validate() error {
 	if s.ReviewFD < -1 {
 		return errors.New("review fd must be -1 or a valid descriptor")
 	}
-	paths := []string{s.Cwd, s.Home, s.Tmp, s.ReviewPath}
+	paths := []string{s.Cwd, s.Home, s.Tmp, s.Workspace, s.RuntimeRoot, s.ReviewPath}
 	paths = append(paths, s.ReadOnlyPaths...)
 	paths = append(paths, s.WritablePaths...)
 	for _, path := range paths {

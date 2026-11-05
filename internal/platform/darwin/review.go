@@ -35,11 +35,11 @@ func (Review) Prepare(ctx context.Context, cfg config.Config, path string) (base
 	if err != nil || !binary.Mode().IsRegular() || binary.Mode().Perm()&0o111 == 0 {
 		return base.ReviewResult{}, errors.New("review requires the claude CLI to be installed")
 	}
-	parent := filepath.Dir(cfg.TmpRoot)
-	if err := os.MkdirAll(parent, 0o755); err != nil {
+	const reviewRoot = "/private/var/lib/ai-sandbox-review"
+	if err := os.MkdirAll(reviewRoot, 0o755); err != nil {
 		return base.ReviewResult{}, fmt.Errorf("create review staging parent: %w", err)
 	}
-	stage, err := os.MkdirTemp(parent, "review-")
+	stage, err := os.MkdirTemp(reviewRoot, "review-")
 	if err != nil {
 		return base.ReviewResult{}, fmt.Errorf("create review staging directory: %w", err)
 	}
@@ -61,6 +61,7 @@ func (Review) Prepare(ctx context.Context, cfg config.Config, path string) (base
 		Env:           env,
 		ReadOnlyPaths: coreruntime.ReadOnlyPaths(cfg),
 		Home:          cfg.AIHome,
+		RuntimeRoot:   cfg.RuntimeRoot,
 		Tmp:           cfg.TmpRoot,
 		Network:       base.NetworkOpen,
 		Review:        true,

@@ -62,7 +62,10 @@ shared ACLs and bind alias, sealed runtime, UID nftables rules, systemd units,
 launchers, state-driven uninstall, and interactive sandbox entry. Ubuntu
 22.04/24.04 on-host verification remains required before claiming parity.
 Phase 3 implements single-file review with a protected Linux descriptor and
-root-owned macOS staging plus a dedicated Seatbelt profile. The full macOS
-lifecycle backends follow in Phases 4 and 5. Phase 5
-keeps Lima as the default VM provider and may add Docker/Podman only as explicit,
-separately validated providers; they are never auto-selected.
+root-owned macOS staging plus a dedicated Seatbelt profile. Phase 4 implements a
+best-effort native macOS lifecycle with `dscl`/`dseditgroup`, `chmod` ACLs,
+sealed runtime activation, symlink launchers, and per-execution Seatbelt. Native
+macOS does not yet install pf anchors or launchd services, so network protection
+is profile-only. Phase 5 keeps Lima as the default VM provider and may add
+Docker/Podman only as explicit, separately validated providers; they are never
+auto-selected.

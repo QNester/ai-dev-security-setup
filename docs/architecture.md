@@ -54,6 +54,30 @@ root-owned staging directory, and renders a dedicated Seatbelt profile that
 allows only the staged file, runtime, AI home, and network. The lifecycle
 backends are still phases 4–5; only review is active on native macOS.
 
+## Phase 4 macOS native lifecycle
+
+The native backend reuses the portable plan and state layers but uses macOS
+mechanisms:
+
+1. `Host` checks the macOS command set and probes `sandbox-exec` as the AI
+   account; there is no apt/Homebrew package mutation.
+2. `Users` creates a locked standard account and dedicated groups through
+   `dscl` and `dseditgroup`, creates the home/tmp roots, and creates the
+   owner-side SSH deploy key.
+3. `ACL` grants execute-only traversal of the owner home and recursive `chmod`
+   ACLs on the shared tree, with directory inheritance. Uninstall clears those
+   entries and verifies removal.
+4. `Runtime` reuses the same sealed-runtime transaction model: vendor installers
+   run as the AI account, payloads are copied into a fresh root-owned tree, and
+   special files, privilege bits, and writable symlink targets are rejected.
+5. `Launchers` installs the root-owned `sandboxctl` and argv0 symlinks.
+6. `enter` renders a per-execution Seatbelt profile from `base.Spec`; `review`
+   uses the staged profile described above. Both run through `sandbox-exec`.
+
+Native macOS does not install a launchd or pf service yet. Network enforcement
+is therefore per-execution and best-effort, and the native backend makes no
+claim of Linux parity.
+
 ## Phase 5 VM provider scope
 
 Lima remains the default and only automatically installable macOS VM provider;
@@ -86,7 +110,7 @@ internal/platform/
   detect/                    OS, architecture, and capability reporting
   base/                      backend interfaces and portable Spec
   linux/                     Bubblewrap/nftables/systemd/setfacl adapter
-  darwin/                    Seatbelt/chmod ACL/launchd/dscl adapter
+  darwin/                    best-effort Seatbelt/chmod ACL/dscl adapter
   vm/                        Lima/UTM adapter; container providers deferred to Phase 5
 internal/templates/
   linux/                     embedded unit and nftables templates

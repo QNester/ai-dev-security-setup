@@ -39,7 +39,7 @@ func enterFixture(t *testing.T) (config.Config, state.State) {
 
 func TestBuildEnterSpecBindsAliasAndNotOwnerHome(t *testing.T) {
 	cfg, st := enterFixture(t)
-	spec, err := buildEnterSpec(st, "claude", cfg.SharedDir, []string{"--version"})
+	spec, err := buildEnterSpec(st, "linux", "claude", cfg.SharedDir, []string{"--version"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +75,23 @@ func TestBuildEnterSpecBindsAliasAndNotOwnerHome(t *testing.T) {
 	}
 }
 
+func TestBuildEnterSpecDarwinUsesWorkspace(t *testing.T) {
+	cfg, st := enterFixture(t)
+	spec, err := buildEnterSpec(st, "darwin", "claude", cfg.SharedDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Workspace != cfg.SharedDir || spec.RuntimeRoot != cfg.RuntimeRoot {
+		t.Fatalf("unexpected darwin spec roots: workspace=%q runtime=%q", spec.Workspace, spec.RuntimeRoot)
+	}
+	if len(spec.BindMounts) != 0 {
+		t.Fatalf("darwin entered with Linux bind mounts: %+v", spec.BindMounts)
+	}
+	if len(spec.WritablePaths) != 1 || spec.WritablePaths[0] != cfg.SharedDir {
+		t.Fatalf("darwin writable paths=%v", spec.WritablePaths)
+	}
+}
+
 func TestResolveStartDirKeepsPathsInsideSharedTree(t *testing.T) {
 	cfg, _ := enterFixture(t)
 	sub := filepath.Join(cfg.SharedDir, "project")
@@ -98,7 +115,7 @@ func TestResolveStartDirKeepsPathsInsideSharedTree(t *testing.T) {
 
 func TestWrapIncludesAliasBindMount(t *testing.T) {
 	_, st := enterFixture(t)
-	spec, err := buildEnterSpec(st, "claude", st.Config.SharedDir, nil)
+	spec, err := buildEnterSpec(st, "linux", "claude", st.Config.SharedDir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

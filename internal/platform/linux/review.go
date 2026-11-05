@@ -42,6 +42,7 @@ func (r Review) Prepare(ctx context.Context, cfg config.Config, path string) (ba
 		ReadOnlyPaths: coreruntime.ReadOnlyPaths(cfg),
 		BindMounts:    mounts,
 		Home:          cfg.AIHome,
+		RuntimeRoot:   cfg.RuntimeRoot,
 		Network:       base.NetworkOpen,
 		Review:        true,
 		ReviewFD:      3,

@@ -42,6 +42,12 @@ profile; native Seatbelt remains best-effort and deprecated. The Linux lifecycle
 and both review paths still need on-host verification, so parity with the
 reference installer is not claimed.
 
+Native macOS now performs a best-effort lifecycle through `dscl`/`dseditgroup`,
+`chmod` ACLs, sealed runtime activation, symlink launchers, and per-execution
+Seatbelt. It does not install pf anchors or launchd services, so network policy
+is profile-only and does not provide Linux parity. Native Seatbelt remains
+deprecated.
+
 `doctor --fix --yes` is the only command that installs host prerequisites. On
 Linux it runs the apt package step; on macOS it installs Lima with Homebrew when
 no VM provider exists. Homebrew itself is never installed automatically because
@@ -66,8 +72,9 @@ advisory and do not make code safe to execute. Vendor installers remain trusted
 inputs unless a future release supports verified mirrors or pinning.
 
 Linux UID filtering is best-effort because it shares the host kernel and network
-namespace. Native macOS relies on deprecated Seatbelt behavior and cannot claim
-Linux parity. Use the VM backend and controlled proxy for strict isolation.
+namespace. Native macOS relies on deprecated Seatbelt behavior, applies network
+policy per execution, and has no pf/launchd service; it cannot claim Linux
+parity. Use the VM backend and controlled proxy for strict isolation.
 
 The Linux implementation has not yet been exercised end-to-end on a clean
 Ubuntu 22.04/24.04 host. Vendor installers, ACL behavior on the owner's

@@ -4,17 +4,15 @@
 Pi, and OpenCode on Linux and macOS. It is the successor to the Bash reference
 installer in this repository; the Go binary has no Bash or Python runtime.
 
-> **Phase 3 (review):** `install`, `update`, and `uninstall` perform real
-> system changes on Linux behind `--yes` and a root check. The lifecycle covers
-> the dedicated account, shared ACLs and bind alias, sealed CLI runtime,
-> UID-scoped nftables policy, systemd units, and root-owned launcher symlinks.
-> `enter` runs a selected CLI inside Bubblewrap. `review` validates one
-> shared-tree file; Linux passes a protected descriptor with `--ro-bind-data`,
-> while macOS copies it into root-owned staging and uses a dedicated Seatbelt
-> profile. Neither review path mounts the shared tree or loads secrets. macOS
-> lifecycle backends remain later phases. The Linux lifecycle and both review
-> paths still need on-host testing on Ubuntu 22.04/24.04 and macOS before
-> claiming full parity with the reference installer.
+> **Phase 4 (macOS native, best-effort):** Linux `install`, `update`, and
+> `uninstall` are implemented with accounts, shared ACLs and bind alias, sealed
+> runtime, UID-scoped nftables, systemd units, and symlink launchers. Native
+> macOS now implements `dscl` accounts, `chmod` ACLs, runtime sealing, launch
+> symlinks, Seatbelt `enter`, and staged `review`. Its network policy is
+> per-execution Seatbelt only; pf/launchd services are not installed yet, and
+> native macOS remains explicitly reduced and best-effort. The macOS VM backend
+> is Phase 5. Linux and macOS still need on-host verification before claiming
+> full parity with the reference installer.
 
 ## Target model
 
@@ -22,10 +20,12 @@ installer in this repository; the Go binary has no Bash or Python runtime.
   directory, and the selected shared tree.
 - CLIs are installed without project access and sealed in a root-owned runtime.
 - Linux uses Bubblewrap, UID-scoped nftables, systemd, and `setfacl`.
-- Native macOS uses deprecated Seatbelt, chmod ACLs, and launchd on an explicit
-  best-effort basis. `--backend auto` selects the VM backend on macOS. Lima is
-  the default and only automatically installable VM provider; Docker/Podman are
-  explicit Phase 5 providers and are never selected automatically.
+- Native macOS uses deprecated Seatbelt and chmod ACLs on an explicit
+  best-effort basis; the native backend applies Seatbelt per execution and does
+  not install a launchd/pf service yet. `--backend auto` selects the VM backend
+  on macOS. Lima is the default and only automatically installable VM provider;
+  Docker/Podman are explicit Phase 5 providers and are never selected
+  automatically.
 - Launchers are symlinks to one root-owned `sandboxctl`, never shell wrappers.
 - State-driven uninstall and verification rollback are architectural requirements.
 
@@ -94,6 +94,20 @@ oversized input, and exposes the file read-only. On Linux the validated
 descriptor is passed with `--ro-bind-data`; on macOS the file is copied into
 root-owned staging and exposed through a dedicated Seatbelt profile. The shared
 tree is not mounted in review mode and the secrets file is not loaded.
+
+Native macOS lifecycle requires an explicit backend selection:
+
+```bash
+sudo sandboxctl install --cli claude,opencode --backend native --yes
+sudo sandboxctl update --backend native --yes
+sudo sandboxctl uninstall --backend native --yes
+```
+
+It uses `dscl`/`dseditgroup` for accounts, `chmod` ACLs for shared access,
+Seatbelt per execution for `enter`, and staged Seatbelt review. Network
+filtering is best-effort and currently profile-only; the native backend does not
+install pf anchors or launchd services. `--backend auto` on macOS remains the
+VM path and is unavailable until Phase 5.
 
 Doctor reports OS/architecture, privileges, init system, Bubblewrap and user
 namespaces, nftables, ACL tooling, Seatbelt's deprecated status, and Lima/UTM on
