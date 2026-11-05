@@ -48,7 +48,9 @@ type Spec struct {
 	Network          NetworkPolicy
 	DNSServers       []string
 	AllowedEndpoints []Endpoint
+	Review           bool
 	ReviewFD         int
+	ReviewPath       string
 }
 
 func (s Spec) Validate() error {
@@ -66,7 +68,7 @@ func (s Spec) Validate() error {
 	if s.ReviewFD < -1 {
 		return errors.New("review fd must be -1 or a valid descriptor")
 	}
-	paths := []string{s.Cwd, s.Home, s.Tmp}
+	paths := []string{s.Cwd, s.Home, s.Tmp, s.ReviewPath}
 	paths = append(paths, s.ReadOnlyPaths...)
 	paths = append(paths, s.WritablePaths...)
 	for _, path := range paths {

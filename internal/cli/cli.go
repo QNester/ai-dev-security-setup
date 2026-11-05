@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/QNester/ai-dev-security-setup/internal/bootstrap"
 	"github.com/QNester/ai-dev-security-setup/internal/config"
@@ -416,46 +417,41 @@ func (a *App) runReview(ctx context.Context, args []string) error {
 	if common.json {
 		return usageError(errors.New("review emits model text; --json is not supported"))
 	}
-	if a.Platform != "linux" {
+	if a.Platform != "linux" && a.Platform != "darwin" {
 		return fmt.Errorf("sandboxed review is not available on %s yet: %w", a.Platform, plan.ErrNotImplemented)
 	}
 	if a.EUID != 0 {
 		return a.reexecWithSudo("review", args)
 	}
-	store, err := a.stateStore(common)
+	cfg, clis, err := a.reviewConfig(common)
 	if err != nil {
 		return err
 	}
-	st, err := store.Load()
-	if err != nil {
-		return fmt.Errorf("load state for review: %w", err)
-	}
-	if st.Platform != a.Platform {
-		return fmt.Errorf("state platform %q does not match current platform %q", st.Platform, a.Platform)
-	}
-	if !containsCLI(st.Runtime.CLIs, "claude") {
+	if !containsCLI(clis, "claude") {
 		return errors.New("review requires the claude CLI to be installed")
 	}
 	backends, err := a.backends()
 	if err != nil {
 		return err
 	}
-	prepared, err := backends.Review.Prepare(ctx, st.Config, fs.Arg(0))
+	reviewCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	prepared, err := backends.Review.Prepare(reviewCtx, cfg, fs.Arg(0))
 	if err != nil {
 		return err
 	}
 	if prepared.Cleanup != nil {
 		defer prepared.Cleanup()
 	}
-	argv, err := backends.Sandbox.Wrap(ctx, prepared.Spec)
+	argv, err := backends.Sandbox.Wrap(reviewCtx, prepared.Spec)
 	if err != nil {
 		return err
 	}
-	credential, err := credentialFor(st.Config.AIUser)
+	credential, err := credentialFor(cfg.AIUser)
 	if err != nil {
 		return err
 	}
-	_, err = (runner.OSRunner{}).Run(ctx, runner.Command{
+	_, err = (runner.OSRunner{}).Run(reviewCtx, runner.Command{
 		Path:       argv[0],
 		Args:       argv[1:],
 		Env:        []string{},
@@ -779,6 +775,31 @@ func (a *App) executePlan(ctx context.Context, value plan.Plan, dryRun bool) (pl
 		}
 		spin.Set(value.Operation + " · " + name)
 	})
+}
+
+func (a *App) reviewConfig(common commonFlags) (config.Config, []string, error) {
+	store, err := a.stateStore(common)
+	if err == nil {
+		if st, loadErr := store.Load(); loadErr == nil {
+			if st.Platform != a.Platform {
+				return config.Config{}, nil, fmt.Errorf("state platform %q does not match current platform %q", st.Platform, a.Platform)
+			}
+			return st.Config, st.Runtime.CLIs, nil
+		} else if errors.Is(loadErr, os.ErrNotExist) {
+			if common.statePath != "" {
+				return config.Config{}, nil, fmt.Errorf("state not found: %w", loadErr)
+			}
+		} else {
+			return config.Config{}, nil, fmt.Errorf("load state for review: %w", loadErr)
+		}
+	} else if common.statePath != "" || common.configPath != "" {
+		return config.Config{}, nil, err
+	}
+	cfg, err := a.loadConfig(common)
+	if err != nil {
+		return config.Config{}, nil, err
+	}
+	return cfg, cfg.CLIs, nil
 }
 
 func (a *App) printPlan(value plan.Plan, common commonFlags) error {

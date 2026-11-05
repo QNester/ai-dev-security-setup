@@ -37,9 +37,10 @@ Linux `review` validates one shared-tree file as a regular, non-symlink, sized,
 UTF-8 text document, opens it with `O_NOFOLLOW`, rewinds the protected
 descriptor, and passes it with `--ro-bind-data`. The review sandbox mounts the
 AI home for authentication but not the shared tree and does not source the
-secrets file. macOS review remains future work. The Linux lifecycle and review
-still need Ubuntu 22.04/24.04 VM runs, so parity with the reference installer is
-not claimed.
+secrets file. macOS review uses root-owned staging and a dedicated Seatbelt
+profile; native Seatbelt remains best-effort and deprecated. The Linux lifecycle
+and both review paths still need on-host verification, so parity with the
+reference installer is not claimed.
 
 `doctor --fix --yes` is the only command that installs host prerequisites. On
 Linux it runs the apt package step; on macOS it installs Lima with Homebrew when

@@ -182,6 +182,18 @@ func TestReviewRejectsJSON(t *testing.T) {
 	}
 }
 
+func TestReviewConfigFallsBackWhenStateIsMissing(t *testing.T) {
+	configPath, _ := writeTestConfig(t)
+	app, _, _ := testApp()
+	cfg, clis, err := app.reviewConfig(commonFlags{configPath: configPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.StatePath == "" || len(clis) != 1 || clis[0] != "claude" {
+		t.Fatalf("unexpected review config: state=%q clis=%v", cfg.StatePath, clis)
+	}
+}
+
 func TestSpinnerRendersAndClears(t *testing.T) {
 	app, _, stderr := testApp()
 	app.forceSpinner = true

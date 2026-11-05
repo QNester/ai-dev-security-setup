@@ -61,7 +61,8 @@ contracts. Phase 2 implements the Linux lifecycle: accounts, prerequisites,
 shared ACLs and bind alias, sealed runtime, UID nftables rules, systemd units,
 launchers, state-driven uninstall, and interactive sandbox entry. Ubuntu
 22.04/24.04 on-host verification remains required before claiming parity.
-Phase 3 implements Linux single-file review with a protected descriptor; macOS
-review follows with the native/VM backends in Phases 4 and 5. Phase 5
+Phase 3 implements single-file review with a protected Linux descriptor and
+root-owned macOS staging plus a dedicated Seatbelt profile. The full macOS
+lifecycle backends follow in Phases 4 and 5. Phase 5
 keeps Lima as the default VM provider and may add Docker/Podman only as explicit,
 separately validated providers; they are never auto-selected.

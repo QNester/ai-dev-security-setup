@@ -2,20 +2,97 @@
 package darwin
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"text/template"
 
 	"github.com/QNester/ai-dev-security-setup/internal/platform/base"
+	"github.com/QNester/ai-dev-security-setup/internal/templates"
 )
 
-type Sandbox struct{}
+const defaultSandboxExec = "/usr/bin/sandbox-exec"
 
-func (Sandbox) Name() string                    { return "seatbelt" }
-func (Sandbox) Available(context.Context) error { return base.ErrNotImplemented }
-func (Sandbox) Wrap(_ context.Context, spec base.Spec) ([]string, error) {
+type Sandbox struct {
+	SandboxExec string
+}
+
+func (Sandbox) Name() string { return "seatbelt" }
+
+func (s Sandbox) Available(context.Context) error {
+	info, err := os.Stat(s.execPath())
+	if err != nil {
+		return fmt.Errorf("sandbox-exec is unavailable: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return errors.New("sandbox-exec is not executable")
+	}
+	return nil
+}
+
+func (s Sandbox) Wrap(ctx context.Context, spec base.Spec) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
-	return nil, base.ErrNotImplemented
+	if !spec.Review {
+		return nil, base.ErrNotImplemented
+	}
+	if spec.ReviewFD >= 0 {
+		return nil, errors.New("descriptor review is not available on macOS; use staged review")
+	}
+	if spec.ReviewPath == "" {
+		return nil, errors.New("macOS review requires a staged input path")
+	}
+	if err := s.Available(ctx); err != nil {
+		return nil, err
+	}
+	profile, err := renderReviewProfile(spec)
+	if err != nil {
+		return nil, err
+	}
+	argv := []string{s.execPath(), "-p", profile}
+	return append(argv, spec.Argv...), nil
+}
+
+func (s Sandbox) execPath() string {
+	if s.SandboxExec != "" {
+		return s.SandboxExec
+	}
+	return defaultSandboxExec
+}
+
+func renderReviewProfile(spec base.Spec) (string, error) {
+	data, err := templates.FS.ReadFile("darwin/ai-review.sb")
+	if err != nil {
+		return "", err
+	}
+	tmpRule := ""
+	if spec.Tmp != "" {
+		tmpRule = fmt.Sprintf(" (subpath %q)", spec.Tmp)
+	}
+	values := map[string]any{
+		"Program":     spec.Argv[0],
+		"RuntimeRoot": filepath.Dir(filepath.Dir(spec.Argv[0])),
+		"AIHome":      spec.Home,
+		"ReviewDir":   filepath.Dir(spec.ReviewPath),
+		"ReviewPath":  spec.ReviewPath,
+		"TmpRule":     tmpRule,
+	}
+	tmpl, err := template.New("ai-review.sb").Option("missingkey=error").Parse(string(data))
+	if err != nil {
+		return "", err
+	}
+	var output bytes.Buffer
+	if err := tmpl.Execute(&output, values); err != nil {
+		return "", err
+	}
+	return output.String(), nil
 }
 
 type Host struct{}
@@ -70,12 +147,6 @@ type Launchers struct{}
 func (Launchers) Install(context.Context, base.Config) error { return base.ErrNotImplemented }
 func (Launchers) Verify(context.Context, base.Config) error  { return base.ErrNotImplemented }
 func (Launchers) Remove(context.Context, base.Config) error  { return base.ErrNotImplemented }
-
-type Review struct{}
-
-func (Review) Prepare(context.Context, base.Config, string) (base.ReviewResult, error) {
-	return base.ReviewResult{}, base.ErrNotImplemented
-}
 
 func Backends() base.Backends {
 	return base.Backends{

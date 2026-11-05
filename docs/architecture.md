@@ -47,8 +47,12 @@ shared tree, rejects symlinks, oversized input, and non-text content, and keeps
 the file descriptor open until Bubblewrap copies it with `--ro-bind-data`. The
 review sandbox mounts the AI home for authentication, not the shared tree, and
 does not source the secrets file. The CLI drops to the AI account with
-`SysProcAttr.Credential` and passes the descriptor through `ExtraFiles`. macOS
-review remains part of the later native/VM work.
+`SysProcAttr.Credential` and passes the descriptor through `ExtraFiles`.
+
+macOS review uses the same portable validation, copies the input into a
+root-owned staging directory, and renders a dedicated Seatbelt profile that
+allows only the staged file, runtime, AI home, and network. The lifecycle
+backends are still phases 4–5; only review is active on native macOS.
 
 ## Phase 5 VM provider scope
 

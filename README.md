@@ -4,16 +4,17 @@
 Pi, and OpenCode on Linux and macOS. It is the successor to the Bash reference
 installer in this repository; the Go binary has no Bash or Python runtime.
 
-> **Phase 3 (Linux review):** `install`, `update`, and `uninstall` perform real
+> **Phase 3 (review):** `install`, `update`, and `uninstall` perform real
 > system changes on Linux behind `--yes` and a root check. The lifecycle covers
 > the dedicated account, shared ACLs and bind alias, sealed CLI runtime,
 > UID-scoped nftables policy, systemd units, and root-owned launcher symlinks.
-> `enter` runs a selected CLI inside Bubblewrap. `review` now validates one
-> shared-tree file, passes a protected descriptor with `--ro-bind-data`, and
-> never mounts the shared tree or loads secrets. macOS review and both macOS
-> lifecycle backends remain later phases. The Linux lifecycle and review still
-> need on-host integration testing on Ubuntu 22.04 and 24.04 before claiming
-> full parity with the reference installer.
+> `enter` runs a selected CLI inside Bubblewrap. `review` validates one
+> shared-tree file; Linux passes a protected descriptor with `--ro-bind-data`,
+> while macOS copies it into root-owned staging and uses a dedicated Seatbelt
+> profile. Neither review path mounts the shared tree or loads secrets. macOS
+> lifecycle backends remain later phases. The Linux lifecycle and both review
+> paths still need on-host testing on Ubuntu 22.04/24.04 and macOS before
+> claiming full parity with the reference installer.
 
 ## Target model
 
@@ -87,11 +88,12 @@ Mutating `install`, `update`, and `uninstall` require root and `--yes`; without
 `--yes` the command exits with a usage error. `--verbose` is accepted but does
 not yet add progress detail. `--dry-run` never invokes backend code.
 
-`review` requires an installed state with `claude` selected. It accepts only a
-regular UTF-8 text file inside the shared tree, rejects symlinks and oversized
-input, and exposes the file to the model as a read-only descriptor. The shared
-tree is not mounted in review mode and the secrets file is not loaded. macOS
-review is not available yet.
+`review` requires `claude` selected in saved state or configuration. It accepts
+only a regular UTF-8 text file inside the shared tree, rejects symlinks and
+oversized input, and exposes the file read-only. On Linux the validated
+descriptor is passed with `--ro-bind-data`; on macOS the file is copied into
+root-owned staging and exposed through a dedicated Seatbelt profile. The shared
+tree is not mounted in review mode and the secrets file is not loaded.
 
 Doctor reports OS/architecture, privileges, init system, Bubblewrap and user
 namespaces, nftables, ACL tooling, Seatbelt's deprecated status, and Lima/UTM on

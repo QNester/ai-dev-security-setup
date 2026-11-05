@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -20,6 +21,14 @@ func TestHelperProcess(t *testing.T) {
 		os.Exit(5)
 	case "large":
 		fmt.Print(strings.Repeat("x", 2048))
+	case "fd":
+		file := os.NewFile(3, "extra")
+		data, err := io.ReadAll(file)
+		if err != nil {
+			fmt.Fprint(os.Stderr, err)
+			os.Exit(6)
+		}
+		fmt.Print(string(data))
 	default:
 		fmt.Printf("args=%s inherited=%s", strings.Join(os.Args, ","), os.Getenv("MUST_NOT_INHERIT"))
 	}
@@ -40,6 +49,33 @@ func TestRunnerUsesArgvAndExplicitEnvironment(t *testing.T) {
 	}
 	if !strings.Contains(result.Stdout, "inherited=") || strings.Contains(result.Stdout, "inherited=leaked") {
 		t.Fatalf("environment was inherited: %q", result.Stdout)
+	}
+}
+
+func TestRunnerPassesExtraFilesAsDescriptorThree(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "extra-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("descriptor data"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	result, err := (OSRunner{}).Run(context.Background(), Command{
+		Path: os.Args[0], Args: []string{"-test.run=TestHelperProcess"},
+		Env: []string{
+			"SANDBOXCTL_TEST_HELPER=1", "SANDBOXCTL_HELPER_MODE=fd",
+		},
+		ExtraFiles: []*os.File{file},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Stdout, "descriptor data") {
+		t.Fatalf("stdout=%q", result.Stdout)
 	}
 }
 

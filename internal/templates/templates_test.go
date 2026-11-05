@@ -13,6 +13,7 @@ var templateFiles = []string{
 	"linux/ai-dev-bwrap.apparmor4",
 	"darwin/ai-sandbox.plist",
 	"darwin/ai-sandbox.sb",
+	"darwin/ai-review.sb",
 }
 
 func TestTemplatesAreEmbedded(t *testing.T) {
@@ -30,7 +31,8 @@ func TestTemplatesRender(t *testing.T) {
 		"IPv4Exceptions": "", "IPv6Exceptions": "", "Tool": "claude",
 		"Program": "/opt/ai-tools/bin/claude", "AIHome": "/home/ai-dev",
 		"TmpRoot": "/var/lib/ai-sandbox/tmp", "SharedDir": "/home/alice/Developer",
-		"NetworkRules": "",
+		"RuntimeRoot": "/opt/ai-tools", "ReviewDir": "/private/var/review",
+		"ReviewPath": "/private/var/review/input", "TmpRule": "", "NetworkRules": "",
 	}
 	for _, name := range templateFiles {
 		t.Run(name, func(t *testing.T) {
